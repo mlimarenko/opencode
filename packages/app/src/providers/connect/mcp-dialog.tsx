@@ -20,6 +20,7 @@ import "@/shell/commands/dialog.css"
 import "@/shell/search-list.css"
 
 const statusLabels = {
+  idle: "mcp.status.idle",
   connected: "mcp.status.connected",
   failed: "mcp.status.failed",
   needs_auth: "mcp.status.needs_auth",

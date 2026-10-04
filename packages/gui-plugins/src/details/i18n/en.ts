@@ -45,6 +45,7 @@ export default {
   "mcp.signIn": "Sign in",
   "mcp.signingIn": "Signing in…",
   "mcp.connected": "Connected",
+  "mcp.idle": "Idle",
   "mcp.disabled": "Disabled",
   "mcp.error.action": "Details",
   "mcp.error.status": "Connection failed",
