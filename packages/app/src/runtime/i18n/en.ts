@@ -381,6 +381,7 @@ export const dict = {
   "dialog.fork.description": "Edit an earlier message in a new session",
 
   "mcp.status.connected": "Connected",
+  "mcp.status.idle": "Idle",
   "mcp.status.failed": "Failed",
   "mcp.status.needs_auth": "Needs auth",
   "mcp.status.disabled": "Disabled",
