@@ -71,6 +71,10 @@ export default defineConfig(({ command }) => ({
     define: {
       // Local renderer/server mode still uses the dev application identity and updater policy.
       "import.meta.env.OPENCODE_CHANNEL": JSON.stringify(channel === "local" ? "dev" : channel),
+      // A standalone fork must keep its opt-out when the desktop session relaunches it without the wrapper environment.
+      ...(process.env.OPENCODE_DISABLE_AUTOUPDATE
+        ? { "process.env.OPENCODE_DISABLE_AUTOUPDATE": JSON.stringify(process.env.OPENCODE_DISABLE_AUTOUPDATE) }
+        : {}),
     },
     build: {
       minify: command === "build",
