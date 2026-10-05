@@ -5,11 +5,12 @@ import { Updater } from "./contract"
 import type definition from "./index"
 import { logContext } from "./log"
 import { make } from "./machine"
+import { updatesEnabled } from "./policy"
 
 const setup: MainSetup<typeof definition> = async (ctx) => {
   const build = ctx.build
   const lifecycle = ctx.lifecycle
-  const enabled = build.packaged && build.channel !== "dev"
+  const enabled = updatesEnabled(build.packaged, build.channel, process.env.OPENCODE_DISABLE_AUTOUPDATE)
   // Holds no resources, so it needs no cleanup.
   const context = logContext(ctx.log.write)
   const runPromise = Effect.runPromiseWith(context)
