@@ -195,7 +195,7 @@ function createServerController(
   })
 
   const sync = createServerSyncContext(sdk, data)
-  createPermissionAutoApprover({ sdk, data })
+  createPermissionAutoApprover({ sdk, data, enabled: settings.permissions.autoApprove })
   const notification = createServerNotificationState({ sdk, data, key: connKey, coordinator: notificationCoordinator })
 
   function enrich(project: { worktree: string; expanded: boolean }) {
