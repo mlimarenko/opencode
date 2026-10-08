@@ -58,21 +58,28 @@ export function createPermissionAutoApprover(input: { sdk: ServerSDK; data: Data
     const complete = await sweep()
 
     if (complete || attempt >= retryLimit) return
-    setTimeout(() => {
-      if (state.disposed || !enabled() || generation !== state.generation) return
-      void sweepWithRetry(generation, attempt + 1)
-    }, retryDelayMs * (attempt + 1))
+    setTimeout(
+      () => {
+        if (state.disposed || !enabled() || generation !== state.generation) return
+        void sweepWithRetry(generation, attempt + 1)
+      },
+      retryDelayMs * (attempt + 1),
+    )
   }
 
   async function sweep() {
-    const inventory = await sweepLocations()
+    // Session-owned reads resolve current placement on the server and borrow
+    // only existing instances. Directory inventory reads would boot cold worktrees.
+    const active = await input.sdk.api.session.active().catch(() => undefined)
+    if (state.disposed || !enabled()) return true
+    const ids = [...new Set([...Object.keys(active ?? {}), ...input.data.session.list().map((session) => session.id)])]
 
     const listed = await Promise.all(
-      inventory.locations.map((location) =>
-        input.sdk.api.permission.request
-          .list({ location: { directory: location.directory } })
+      ids.map((sessionID) =>
+        input.sdk.api.permission
+          .list({ sessionID })
           .then((pending) => {
-            if (!state.disposed) pending.data.forEach((request) => consider(request))
+            if (!state.disposed) pending.forEach((request) => consider(request))
 
             return true
           })
@@ -80,50 +87,7 @@ export function createPermissionAutoApprover(input: { sdk: ServerSDK; data: Data
       ),
     )
 
-    return inventory.complete && listed.every(Boolean)
-  }
-
-  // Active sessions are the primary inventory: session.active is server-wide,
-  // so it covers sessions no tab has loaded, and a request blocking a tool
-  // call always belongs to one (Permission.assert clears its entry when the
-  // awaiting fiber dies). Locally known sessions are swept too because the
-  // external session.permission.create API can park a request on an idle
-  // session. A detached request on a session this client never loaded is the
-  // one case that stays uncovered.
-  async function sweepLocations() {
-    const active = await input.sdk.api.session.active().catch(() => undefined)
-    const ids = Object.keys(active ?? {})
-
-    // Resync every active session rather than trusting cached info: another
-    // client may have moved one while this client was disconnected, and the
-    // cached location would list permissions from the old location. A failed
-    // resync falls back to the cached location and marks the sweep incomplete.
-    const synced = await Promise.all(
-      ids.map((id) => {
-        input.data.session.invalidate(id)
-
-        return input.data.session.sync(id).then(
-          () => true,
-          () => false,
-        )
-      }),
-    )
-
-    const locations = [
-      ...ids.flatMap((id) => {
-        const location = input.data.session.get(id)?.location
-
-        return location ? [location] : []
-      }),
-      ...input.data.session.list().map((session) => session.location),
-    ]
-
-    return {
-      locations: [
-        ...new Map(locations.map((item) => [item.directory, item])).values(),
-      ],
-      complete: active !== undefined && synced.every(Boolean),
-    }
+    return active !== undefined && listed.every(Boolean)
   }
 
   // A request from a session this client has not loaded needs that session's
