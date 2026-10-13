@@ -602,7 +602,8 @@ testEffect(Layer.empty).effect(
         expect(counts).toEqual({ spawned: 1, closed: 0 })
         const prompts = yield* service.prompts()
         yield* TestClock.adjust("61 seconds")
-        yield* drain
+        // Closing the real stdio child can outlive a fixed macrotask drain under load.
+        yield* advance(() => counts.closed === 1)
         expect(counts).toEqual({ spawned: 1, closed: 1 })
         // Historical GUI metadata polling must neither lose commands nor respawn the server.
         yield* service.start()
