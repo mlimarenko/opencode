@@ -242,7 +242,7 @@ function createServerController(
   })
 
   const sync = createServerSyncContext(sdk, data)
-  createPermissionAutoApprover({ sdk, data, enabled: settings.permissions.autoApprove })
+  createPermissionAutoApprover({ sdk, data })
   const notification = createServerNotificationState({ sdk, data, key: connKey, coordinator: notificationCoordinator })
 
   // Projects whose repository has no root commit share the `global` ID; their name and icon stay local to the
