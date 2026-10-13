@@ -59,7 +59,10 @@ test("auto-approval reconnect sweeps session-owned requests without booting hist
       },
     },
     api: {
-      session: { active: async () => ({ ses_active: { type: "busy" } }) },
+      session: {
+        active: async () => ({ ses_active: { type: "busy" } }),
+        get: async () => ({ projectID: "default-project" }),
+      },
       permission: {
         request: {
           list: async (input: { location: { directory: string } }) => {
@@ -108,6 +111,171 @@ test("auto-approval reconnect sweeps session-owned requests without booting hist
     dispose()
   }
   expect(state.unsubscribed).toBe(true)
+})
+
+function approvalFixture(input: {
+  cachedProject?: string
+  get: () => Promise<{ projectID: string }>
+  reply?: () => Promise<void>
+}) {
+  const pending: PermissionRequest = {
+    id: "per_recovery",
+    sessionID: "ses_recovery",
+    action: "shell",
+    resources: ["*"],
+  }
+  const replies: string[] = []
+  const state = { gets: 0, lists: 0, asked: (_event: { data: PermissionRequest }) => {} }
+  const [connection, setConnection] = createStore({ status: "disconnected" })
+  const sdk = {
+    scope: ServerScope.local,
+    connection: { status: () => connection.status },
+    event: {
+      on(_type: string, callback: typeof state.asked) {
+        state.asked = callback
+        return () => {}
+      },
+    },
+    api: {
+      session: {
+        active: async () => ({ ses_recovery: { type: "busy" } }),
+        get: async () => {
+          state.gets++
+          return input.get()
+        },
+      },
+      permission: {
+        list: async () => {
+          state.lists++
+          return [pending]
+        },
+        reply: async ({ requestID }: { requestID: string }) => {
+          replies.push(requestID)
+          await input.reply?.()
+        },
+      },
+    },
+  }
+  const sessions = input.cachedProject ? [{ id: pending.sessionID, projectID: input.cachedProject }] : []
+  const data = { session: { list: () => sessions, get: () => sessions[0], permission: { list: () => [] } } }
+  const dispose = withSettings(() => {
+    permissions.setAutoApproveDefault(true)
+    permissions.setAutoApproveOverride(ScopedKey.from(sdk.scope, "project-a"), true)
+    permissions.setAutoApproveOverride(ScopedKey.from(sdk.scope, "project-b"), false)
+    createPermissionAutoApprover({ sdk, data } as unknown as Parameters<typeof createPermissionAutoApprover>[0])
+  })
+  return {
+    pending,
+    replies,
+    state,
+    dispose,
+    connect: () => setConnection("status", "connected"),
+    ask: () => state.asked({ data: pending }),
+  }
+}
+
+test("reconnect resolves the moved session's authoritative project instead of its cached project", async () => {
+  const fixture = approvalFixture({ cachedProject: "project-a", get: async () => ({ projectID: "project-b" }) })
+  try {
+    fixture.connect()
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    expect(fixture.state.gets).toBe(1)
+    expect(fixture.replies).toEqual([])
+  } finally {
+    fixture.dispose()
+  }
+})
+
+test.each(["sweep", "event"] as const)("%s retries a transient authoritative metadata failure", async (origin) => {
+  let attempts = 0
+  const fixture = approvalFixture({
+    get: async () => {
+      if (++attempts === 1) throw new Error("transient metadata failure")
+      return { projectID: "project-a" }
+    },
+  })
+  try {
+    if (origin === "sweep") fixture.connect()
+    else fixture.ask()
+    await new Promise<void>((resolve) => setTimeout(resolve, 1150))
+    expect(fixture.state.gets).toBe(2)
+    expect(fixture.replies).toEqual([fixture.pending.id])
+    expect(fixture.state.lists).toBe(origin === "sweep" ? 2 : 0)
+  } finally {
+    fixture.dispose()
+  }
+})
+
+test.each(["dispose", "disable"] as const)("event metadata completion respects %s", async (guard) => {
+  const metadata = Promise.withResolvers<{ projectID: string }>()
+  const fixture = approvalFixture({ get: () => metadata.promise })
+  try {
+    fixture.ask()
+    expect(fixture.state.gets).toBe(1)
+    if (guard === "dispose") fixture.dispose()
+    else permissions.setAutoApproveOverride(ScopedKey.from(ServerScope.local, "project-a"), false)
+    metadata.resolve({ projectID: "project-a" })
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    expect(fixture.replies).toEqual([])
+  } finally {
+    fixture.dispose()
+  }
+})
+
+test.each(["dispose", "disable"] as const)("event metadata retry respects %s", async (guard) => {
+  const fixture = approvalFixture({
+    get: async () => {
+      throw new Error("transient metadata failure")
+    },
+  })
+  try {
+    fixture.ask()
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    if (guard === "dispose") fixture.dispose()
+    else {
+      permissions.setAutoApproveDefault(false)
+      permissions.setAutoApproveOverride(ScopedKey.from(ServerScope.local, "project-a"), false)
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, 1150))
+    expect(fixture.state.gets).toBe(1)
+    expect(fixture.replies).toEqual([])
+  } finally {
+    fixture.dispose()
+  }
+})
+
+test("event metadata failures exhaust the existing two-retry bound", async () => {
+  const fixture = approvalFixture({
+    get: async () => {
+      throw new Error("metadata unavailable")
+    },
+  })
+  try {
+    fixture.ask()
+    await new Promise<void>((resolve) => setTimeout(resolve, 3200))
+    expect(fixture.state.gets).toBe(3)
+    expect(fixture.replies).toEqual([])
+  } finally {
+    fixture.dispose()
+  }
+})
+
+test("a failed reply retry refreshes project identity before approving again", async () => {
+  let reads = 0
+  const fixture = approvalFixture({
+    get: async () => ({ projectID: ++reads === 1 ? "project-a" : "project-b" }),
+    reply: async () => {
+      throw new Error("reply failed before session moved")
+    },
+  })
+  try {
+    fixture.ask()
+    await new Promise<void>((resolve) => setTimeout(resolve, 1150))
+    expect(fixture.state.gets).toBe(2)
+    expect(fixture.replies).toEqual([fixture.pending.id])
+  } finally {
+    fixture.dispose()
+  }
 })
 
 test.each([
