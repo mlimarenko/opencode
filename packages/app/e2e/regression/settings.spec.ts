@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test"
 import type { ConfigEntry, OpenCodeEvent, SessionMessageInfo, WorktreeDirectory } from "@opencode/client/promise"
-import { NO_PROVIDER, REMOTE_SERVER, SERVER, holdRoute, project, seed, session } from "../utils/app"
+import { NO_PROVIDER, REMOTE_SERVER, SERVER, holdRoute, project, seed, session, workspaceKey } from "../utils/app"
 import { mockMissingLocation, mockOpenCodeServer } from "../utils/mock-server"
 import { mockRemoteServer, mockWorkspace, openSession, openSettings, type WorkspaceInput } from "../utils/workspace"
 
@@ -539,8 +539,42 @@ for (const field of [
   })
 }
 
-test("clearing project fields sends explicit removal values", async ({ page }) => {
-  const { settings } = await open(page)
+test("saved workspace colors survive project sync and can be changed and cleared", async ({ page }) => {
+  const { settings } = await open(page, {
+    project: { icon: { color: "purple" }, sandboxes },
+    seed: {
+      projects: { local: [] },
+      storage: { [workspaceKey(directory, "project")]: { value: { icon: { color: "orange" } } } },
+    },
+  })
+  await openProject(page)
+  const orange = settings.getByRole("button", { name: "Select orange color", exact: true })
+  const blue = settings.getByRole("button", { name: "Select blue color", exact: true })
+  await expect(orange).toHaveAttribute("aria-pressed", "true")
+  await blue.click()
+  await expect(settings.locator('[aria-busy="true"]')).toHaveCount(0)
+  await expect(blue).toHaveAttribute("aria-pressed", "true")
+  await settings.getByRole("button", { name: "Back to projects", exact: true }).click()
+  const row = settings.getByRole("button", { name: "Settings demo", exact: true })
+  await expect(row.locator('[data-slot="project-avatar-surface"]')).toHaveAttribute("data-variant", "blue")
+  await row.click()
+  await expect(blue).toHaveAttribute("aria-pressed", "true")
+  await blue.click()
+  await expect(settings.locator('[aria-busy="true"]')).toHaveCount(0)
+  await settings.getByRole("tab", { name: "Worktrees", exact: true }).click()
+  await settings.getByRole("tab", { name: "General", exact: true }).click()
+  await expect(orange).toHaveAttribute("aria-pressed", "false")
+  await expect(blue).toHaveAttribute("aria-pressed", "false")
+  await page.reload()
+  await expect(
+    page.getByTestId("settings-screen").getByRole("button", { name: "Select gray color", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true")
+})
+
+test("clearing project fields removes startup and workspace appearance", async ({ page }) => {
+  const { settings } = await open(page, {
+    seed: { projects: { local: [] }, storage: { [workspaceKey(directory, "icon")]: { value: override } } },
+  })
   await openProject(page)
   const startup = settings.getByRole("textbox", { name: "Worktree startup script", exact: true })
   await expect(startup).toHaveValue("echo setup")
@@ -548,28 +582,34 @@ test("clearing project fields sends explicit removal values", async ({ page }) =
   await expect(icon.locator("img")).toHaveCount(1)
   const color = settings.getByRole("button", { name: "Select orange color", exact: true })
 
-  for (const step of [
-    {
-      act: async () => {
-        await startup.clear()
-        await startup.blur()
-      },
-      patch: { commands: { start: "" } },
-    },
-    { act: () => icon.click(), patch: { icon: { color: "orange", override: "" } } },
-    {
-      act: async () => {
-        await expect(color).toHaveAttribute("aria-pressed", "true")
-        await color.click()
-      },
-      patch: { icon: { color: "", override: "" } },
-    },
-  ]) {
-    const saved = patched(page)
-    await step.act()
-    expect((await saved).postDataJSON()).toEqual(step.patch)
-    await expect(settings.locator('[aria-busy="true"]')).toHaveCount(0)
-  }
+  const saved = patched(page)
+  await startup.clear()
+  await startup.blur()
+  expect((await saved).postDataJSON()).toEqual({ commands: { start: "" } })
+  await expect(settings.locator('[aria-busy="true"]')).toHaveCount(0)
+  const image = Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="blue"/></svg>',
+  )
+  await settings
+    .locator('input[type="file"]')
+    .setInputFiles({ name: "blue.svg", mimeType: "image/svg+xml", buffer: image })
+  await expect(icon.locator("img")).toHaveAttribute("src", `data:image/svg+xml;base64,${image.toString("base64")}`)
+  await settings.getByRole("button", { name: "Back to projects", exact: true }).click()
+  const row = settings.getByRole("button", { name: "Settings demo", exact: true })
+  await expect(row.locator("img")).toHaveAttribute("src", `data:image/svg+xml;base64,${image.toString("base64")}`)
+  await row.click()
+  await icon.click()
+  await expect(icon.locator("img")).toHaveCount(0)
+  await expect(color).toHaveAttribute("aria-pressed", "true")
+  await color.click()
+  await expect(settings.getByRole("button", { name: "Select gray color", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  )
+  await page.reload()
+  await expect(
+    page.getByTestId("settings-screen").getByRole("button", { name: "Project icon", exact: true }).locator("img"),
+  ).toHaveCount(0)
 })
 
 test("shortcuts list Search sessions once and unbind a shortcut while recording it", async ({ page }) => {
