@@ -666,6 +666,21 @@ export const layer = (options?: Options) =>
         yield* bus.publish(McpEvent.StatusChanged, { server: name })
       })
 
+      // Called under the reconcile lock, whether activation precedes or follows metadata registration.
+      const startPending = () => {
+        for (const [name, entry] of entries) {
+          if (entry.status.status !== "pending") continue
+          entry.startup.closeUnsafe()
+          fork(
+            Effect.suspend(() =>
+              entries.get(name) === entry && entry.status.status === "pending"
+                ? startServer(name, entry)
+                : Effect.void,
+            ).pipe(locks.withLock(name)),
+          )
+        }
+      }
+
       let applied: Map<ServerName, Mcp.ServerConfig> | undefined
       const overrides = new Map<ServerName, Mcp.ServerConfig | false>()
       const reconcileLock = Semaphore.makeUnsafe(1)
@@ -695,6 +710,7 @@ export const layer = (options?: Options) =>
               continue
             }
           }
+          if (active) startPending()
           return
         }
 
@@ -719,17 +735,7 @@ export const layer = (options?: Options) =>
               Effect.gen(function* () {
                 if (active) return
                 active = true
-                for (const [name, entry] of entries) {
-                  if (entry.status.status !== "pending") continue
-                  entry.startup.closeUnsafe()
-                  fork(
-                    Effect.suspend(() =>
-                      entries.get(name) === entry && entry.status.status === "pending"
-                        ? startServer(name, entry)
-                        : Effect.void,
-                    ).pipe(locks.withLock(name)),
-                  )
-                }
+                startPending()
               }),
             ),
       ).pipe(Effect.uninterruptible)
