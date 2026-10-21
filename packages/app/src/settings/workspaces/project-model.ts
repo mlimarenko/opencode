@@ -37,19 +37,10 @@ export function createEditProjectModel(props: { project: LocalProject; server: S
   let iconInput: HTMLInputElement | undefined
   let queue = Promise.resolve()
 
-  const persist = (patch: ProjectPatch, complete: () => void) => {
+  const persist = (save: () => void | Promise<unknown>, complete: () => void) => {
     setStore("saving", (value) => value + 1)
     queue = queue
-      .then(async () => {
-        if (props.project.id && props.project.id !== "global") {
-          const project = await serverCtx().sdk.api.project.update({ projectID: props.project.id, ...patch })
-          serverCtx().sync.project.update(project)
-
-          return
-        }
-
-        serverCtx().sync.project.meta(props.project.worktree, patch)
-      })
+      .then(save)
       .then(complete)
       .catch((error: unknown) => {
         showToast({
@@ -61,31 +52,50 @@ export function createEditProjectModel(props: { project: LocalProject; server: S
       .finally(() => setStore("saving", (value) => value - 1))
   }
 
+  const saveProject = async (patch: ProjectPatch) => {
+    if (props.project.id && props.project.id !== "global") {
+      const project = await serverCtx().sdk.api.project.update({ projectID: props.project.id, ...patch })
+      serverCtx().sync.project.update(project)
+
+      return
+    }
+
+    serverCtx().sync.project.meta(props.project.worktree, patch)
+  }
+
   const saveName = () => {
     const value = store.name.trim() === folderName() ? "" : store.name.trim()
 
     // A pending write can change the saved value, so reverting to it must still be queued.
     if (!store.saving && value === saved.name) return
-    persist({ name: value }, () => {
-      saved.name = value
-    })
+    persist(
+      () => saveProject({ name: value }),
+      () => {
+        saved.name = value
+      },
+    )
   }
 
   const saveStartup = () => {
     const value = store.startup.trim()
 
     if (!store.saving && value === saved.startup) return
-    persist({ commands: { start: value } }, () => {
-      saved.startup = value
-    })
+    persist(
+      () => saveProject({ commands: { start: value } }),
+      () => {
+        saved.startup = value
+      },
+    )
   }
 
-  const saveIcon = (color = store.color, override = store.iconOverride) => {
-    if (!store.saving && color === saved.color && override === saved.iconOverride) return
-    persist({ icon: { color: color ?? "", override: override ?? "" } }, () => {
-      saved.color = color
-      saved.iconOverride = override
-    })
+  const saveIcon = (override: string | undefined) => {
+    if (!store.saving && override === saved.iconOverride) return
+    persist(
+      () => serverCtx().sync.project.icon(props.project.worktree, override ?? ""),
+      () => {
+        saved.iconOverride = override
+      },
+    )
   }
 
   function selectFile(file: File) {
@@ -97,7 +107,7 @@ export function createEditProjectModel(props: { project: LocalProject; server: S
       if (typeof result !== "string") return
       setStore("iconOverride", result)
       setStore("iconHover", false)
-      saveIcon(store.color, result)
+      saveIcon(result)
     }
 
     reader.readAsDataURL(file)
@@ -112,7 +122,13 @@ export function createEditProjectModel(props: { project: LocalProject; server: S
     saveStartup,
     setColor(value: string | undefined) {
       setStore("color", value)
-      saveIcon(value, store.iconOverride)
+      if (!store.saving && value === saved.color) return
+      persist(
+        () => serverCtx().sync.project.meta(props.project.worktree, { icon: { color: value ?? "" } }),
+        () => {
+          saved.color = value
+        },
+      )
     },
     drop(event: DragEvent) {
       event.preventDefault()
@@ -136,7 +152,7 @@ export function createEditProjectModel(props: { project: LocalProject; server: S
     iconClick() {
       if (store.iconOverride && store.iconHover) {
         setStore("iconOverride", "")
-        saveIcon(store.color, "")
+        saveIcon("")
 
         return
       }

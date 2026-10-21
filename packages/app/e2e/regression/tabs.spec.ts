@@ -12,6 +12,7 @@ import {
   seed,
   session,
   sessionHref,
+  workspaceKey,
 } from "../utils/app"
 import { openFileLauncher, reviewTabs } from "../utils/side-panel"
 import { currentSession, mockServers } from "../utils/mock-server"
@@ -126,6 +127,48 @@ test("recently closed fills remaining slots in Home order without open or duplic
   await expect(items).toHaveText([11, 10, 3, 4, 5, 6, 7, 8, 9].map((index) => `OOther session ${index}`))
   await menu.getByRole("searchbox", { name: "Search recently closed" }).fill("session 9")
   await expect(items).toHaveText(["OOther session 9"])
+})
+
+test("session avatars retain workspace color for a concrete project in an external worktree", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const root = "C:/OpenCode/Color workspace"
+  const concrete = project({ id: "proj_product", directory: `${root}/product`, name: "Product" })
+  const workspace = await openSession(page, {
+    name: "Color workspace",
+    directory: root,
+    projects: [project({ id: "proj_color_workspace", directory: root, name: "Color workspace" }), concrete],
+    sessions: [{ id: "ses_color", title: "Color session", projectID: concrete.id, directory: "C:/worktrees/feature" }],
+    seed: {
+      settings: { appearance: { tabLayout: "vertical" } },
+      storage: { [workspaceKey(root, "project")]: { value: { icon: { color: "pink" } } } },
+    },
+  })
+  const tab = page.locator("[data-titlebar-tab]").filter({ has: page.locator(`a[href="${sessionHref("ses_color")}"]`) })
+  const avatar = tab.locator('[data-slot="project-avatar-surface"]')
+  await expect(avatar).toHaveAttribute("data-variant", "pink")
+  await workspace.push([
+    {
+      id: "evt_project_color",
+      created: Date.now(),
+      type: "project.updated",
+      data: {
+        ...concrete,
+        canonical: concrete.worktree,
+        time: { ...concrete.time, active: 0 },
+        icon: { color: "blue" },
+      },
+    } as OpenCodeEvent,
+  ])
+  await expect(avatar).toHaveAttribute("data-variant", "pink")
+  await expectPath(page, sessionHref("ses_color"))
+  await expectSessionTitle(page, "Color session")
+  await page.screenshot({ path: testInfo.outputPath("colors-desktop.png") })
+  await page.setViewportSize({ width: 800, height: 700 })
+  await expect(avatar).toBeVisible()
+  await expect(avatar).toHaveAttribute("data-variant", "pink")
+  await page.screenshot({ path: testInfo.outputPath("colors-constrained.png") })
 })
 
 for (const server of [SERVER, REMOTE_SERVER]) {

@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import type { SessionInfo } from "@opencode/client/promise"
-import { errorMessage, projectForSession, toggleHomeProjectSelection } from "./helpers"
+import {
+  errorMessage,
+  projectForSession,
+  resolveSessionProjectColor,
+  toggleHomeProjectSelection,
+} from "./helpers"
 import { ServerConnection } from "@/runtime/server/registry"
 
 const serverKey = ServerConnection.Key.make
@@ -39,6 +44,30 @@ const enriched: { name: string; project: Project }[] = [
 ]
 
 describe("layout workspace helpers", () => {
+  test.each([
+    { directory: "/repo/package", expected: "pink" },
+    { directory: "/repo/nested/package", expected: "blue" },
+    { directory: "/repo/neutral/package", expected: "" },
+    { directory: "/external/worktree", expected: "pink" },
+    { directory: "/repo-sibling/package", expected: undefined, canonical: "/unrelated" },
+  ])(
+    "resolves workspace color without changing project identity ($directory)",
+    ({ directory, expected, canonical }) => {
+      expect(
+        resolveSessionProjectColor(
+          session({ id: "feature", directory }),
+          [
+            { worktree: "/repo", color: "pink" },
+            { worktree: "/repo/nested", color: "blue" },
+            { worktree: "/repo/neutral", color: "" },
+            { worktree: "/external", color: undefined },
+          ],
+          [{ id: "project", worktree: canonical ?? "/repo/product" }],
+        ),
+      ).toBe(expected)
+    },
+  )
+
   test.each(enriched)("keeps the enriched project for a nested workspace session ($name)", ({ project }) => {
     expect(
       projectForSession(session({ id: "feature", directory: "/workspaces/feature/packages/app" }), [project]),

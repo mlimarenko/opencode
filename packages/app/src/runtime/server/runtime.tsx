@@ -21,7 +21,7 @@ import { formatServerError } from "./errors"
 import { useSettings } from "@/settings/model"
 import { timelinePreset } from "@opencode/session-ui/timeline/detail"
 import type { SessionInfo } from "@opencode/client/promise"
-import { projectForSession } from "@/shell/layout/helpers"
+import { projectForSession, resolveSessionProjectColor } from "@/shell/layout/helpers"
 import { isProjectDirectory } from "@/workspaces/paths"
 import type { Project } from "@/runtime/server/types"
 
@@ -248,9 +248,17 @@ function createServerController(
   // Projects whose repository has no root commit share the `global` ID; their name and icon stay local to the
   // directory because the server cannot tell them apart.
   function withLocalMeta(project: Project): Project {
-    if (project.id !== "global") return project
-
-    return { ...project, ...sync.child(project.worktree, { bootstrap: false })[0].projectMeta }
+    const [child] = sync.child(project.worktree, { bootstrap: false })
+    const color = child.projectMeta?.icon?.color
+    return {
+      ...project,
+      ...(project.id === "global" ? child.projectMeta : undefined),
+      icon: {
+        ...project.icon,
+        ...(color !== undefined ? { color } : {}),
+        ...(child.icon !== undefined ? { override: child.icon } : {}),
+      },
+    }
   }
 
   const list = createMemo(() => sync.data.project.map(withLocalMeta))
@@ -335,7 +343,19 @@ function createServerController(
       used,
       add,
       forDirectory,
-      forSession: (session: SessionInfo): Project | undefined => projectForSession(session, list()),
+      forSession: (session: SessionInfo): Project | undefined => {
+        const project = projectForSession(session, list())
+        if (!project) return
+        const color = resolveSessionProjectColor(
+          session,
+          list().map((item) => ({
+            ...item,
+            color: sync.child(item.worktree, { bootstrap: false })[0].projectMeta?.icon?.color,
+          })),
+          sync.data.project,
+        )
+        return color === undefined ? project : { ...project, icon: { ...project.icon, color } }
+      },
       last: () => list().find((project) => project.id === projects.last()),
       // Marks the project of a directory as used from this client, and as the last one.
       touch(directory: string) {
