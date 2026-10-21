@@ -19,7 +19,12 @@ import { formatServerError } from "./errors"
 import { useSettings } from "@/settings/model"
 import { timelinePreset } from "@opencode/session-ui/timeline/detail"
 import type { SessionInfo } from "@opencode/client/promise"
-import { resolveProjectForSession, resolveSessionDetailsProject } from "@/shell/layout/helpers"
+import {
+  resolveProjectForSession,
+  resolveSessionDetailsProject,
+  resolveSessionProjectColor,
+} from "@/shell/layout/helpers"
+import type { Project } from "./types"
 
 export const { use: useGlobal, provider: GlobalProvider } = createSimpleContext({
   name: "Global",
@@ -198,34 +203,66 @@ function createServerController(
   createPermissionAutoApprover({ sdk, data })
   const notification = createServerNotificationState({ sdk, data, key: connKey, coordinator: notificationCoordinator })
 
+  function withWorkspaceIcon<T extends { worktree: string; icon?: Project["icon"] }>(project: T) {
+    const [childStore] = sync.child(project.worktree, { bootstrap: false })
+    const color = childStore.projectMeta?.icon?.color
+
+    // Workspace appearance is an explicit override, including an empty value to reset it.
+    if (color !== undefined || childStore.icon !== undefined) {
+      return {
+        ...project,
+        icon: {
+          ...project.icon,
+          ...(color !== undefined ? { color } : {}),
+          ...(childStore.icon !== undefined ? { override: childStore.icon } : {}),
+        },
+      }
+    }
+
+    return project
+  }
+
   function enrich(project: { worktree: string; expanded: boolean }) {
     const [childStore] = sync.child(project.worktree, { bootstrap: false })
     const projectID = childStore.project
-
     const metadata = projectID
       ? sync.data.project.find((x) => x.id === projectID)
       : sync.data.project.find((x) => x.worktree === project.worktree)
 
-    // Preserve local icon override from per-workspace localStorage cache (childStore.icon).
-    // Without this, different subdirectories of the same git repo would share the same
-    // icon from the database instead of using their individual overrides.
-    const base = {
+    return withWorkspaceIcon({
       ...metadata,
       ...(!metadata || metadata.id === "global" ? childStore.projectMeta : undefined),
       ...project,
-    }
-
-    if (childStore.icon) {
-      return { ...base, icon: { ...base.icon, override: childStore.icon } }
-    }
-
-    return base
+    })
   }
 
   const projectsList = createMemo(() => projects.list().map(enrich))
+  const projectColors = createMemo(() =>
+    projectsList().map((project) => {
+      const [childStore] = sync.child(project.worktree, { bootstrap: false })
+
+      return { ...project, color: childStore.projectMeta?.icon?.color }
+    }),
+  )
+
+  function withSessionColor<T extends { worktree: string; icon?: Project["icon"] }>(
+    session: SessionInfo,
+    project: T | undefined,
+  ) {
+    if (!project) return
+    const [childStore] = sync.child(project.worktree, { bootstrap: false })
+    const color =
+      childStore.projectMeta?.icon?.color ?? resolveSessionProjectColor(session, projectColors(), sync.data.project)
+
+    const appearance = withWorkspaceIcon(project)
+
+    if (color === undefined) return appearance
+
+    return { ...appearance, icon: { ...appearance.icon, color } }
+  }
 
   const forSession = (session: SessionInfo) => {
-    const project = resolveProjectForSession(session, projectsList(), sync.data.project)
+    const project = withSessionColor(session, resolveProjectForSession(session, projectsList(), sync.data.project))
 
     if (!project) return
 
@@ -233,7 +270,7 @@ function createServerController(
   }
 
   const detailsForSession = (session: SessionInfo) =>
-    resolveSessionDetailsProject(session, projectsList(), sync.data.project)
+    withSessionColor(session, resolveSessionDetailsProject(session, projectsList(), sync.data.project))
 
   const recentlyClosedList = createMemo(() => {
     const known = new Set(sync.data.project.map((project) => pathKey(project.worktree)))

@@ -145,7 +145,7 @@ export function SettingsScreen() {
       context.projects.list().find((item) => item.worktree === directory) ??
       context.sync.data.project.find((item) => item.worktree === directory)
 
-    return value ? { expanded: false, ...value } : undefined
+    return value ? context.projects.resolve({ expanded: false, ...value }) : undefined
   }
 
   const targetServer = createMemo(() => {
