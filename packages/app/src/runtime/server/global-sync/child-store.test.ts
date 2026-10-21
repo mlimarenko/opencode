@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, mock, test } from "bun:test"
-import { createRoot, getOwner } from "solid-js"
-import { createStore } from "solid-js/store"
+import { createRoot, createSignal, getOwner } from "solid-js"
+import { createStore, reconcile } from "solid-js/store"
 import type { State } from "./types"
 import type { QueryOptionsApi } from "../sync"
 import { ServerScope } from "@/runtime/server/scope"
@@ -56,7 +56,7 @@ const queryOptionsApi = {
   sessions: (directory: string) => ({ queryKey: [directory, "loadSessions"] as const }),
 } as unknown as QueryOptionsApi
 
-function setup(input: { connected?: () => boolean } = {}) {
+function setup(input: { connected?: () => boolean; persist?: typeof persisted } = {}) {
   const bootstraps: string[] = []
   const mcpLoads: string[] = []
   const offset = querySingles.length
@@ -70,7 +70,7 @@ function setup(input: { connected?: () => boolean } = {}) {
       owner,
       connected: input.connected ?? (() => true),
       scope: ServerScope.local,
-      persist,
+      persist: input.persist ?? persist,
       isBooting: () => false,
       isLoadingSessions: () => false,
       onBootstrap: (directory) => bootstraps.push(directory),
@@ -118,6 +118,46 @@ beforeAll(async () => {
 })
 
 describe("createChildStoreManager", () => {
+  test("hydrates and edits appearance without allocating directory stores", async () => {
+    const release = Promise.withResolvers<void>()
+    const inits: Promise<string>[] = []
+    const delayed: typeof persisted = (target, _schema, initial) => {
+      const store = createStore(initial)
+      const [ready, setReady] = createSignal(false)
+      const key = typeof target === "string" ? target : target.key
+      const init = release.promise.then(() => {
+        store[1](reconcile({ value: key === "workspace:icon" ? "saved-image" : { icon: { color: "orange" } } }))
+        setReady(true)
+
+        return "stored"
+      })
+      inits.push(init)
+
+      return [...store, init, Object.assign(ready, { promise: init })]
+    }
+    const { manager, bootstraps, queries, dispose } = setup({ persist: delayed })
+
+    try {
+      expect(manager.projectAppearance("/inventory")).toEqual({ meta: undefined, icon: undefined, ready: false })
+      expect(Object.keys(manager.children)).toEqual([])
+      expect(bootstraps).toEqual([])
+      expect(queries()).toEqual([])
+      release.resolve()
+      await Promise.all(inits)
+      expect(manager.projectAppearance("/inventory")).toEqual({
+        meta: { icon: { color: "orange" } },
+        icon: "saved-image",
+        ready: true,
+      })
+      manager.projectMeta("/inventory", { icon: { color: "" } })
+      manager.projectIcon("/inventory", "")
+      expect(manager.projectAppearance("/inventory")).toEqual({ meta: { icon: { color: "" } }, icon: "", ready: true })
+      expect(Object.keys(manager.children)).toEqual([])
+    } finally {
+      dispose()
+    }
+  })
+
   test("does not evict the active directory during mark", () => {
     const { manager, dispose } = setup()
 

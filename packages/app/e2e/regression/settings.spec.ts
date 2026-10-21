@@ -330,8 +330,11 @@ for (const field of [
 
 test("saved workspace colors survive project sync and can be changed and cleared", async ({ page }) => {
   const { settings } = await open(page, {
-    project: { icon: undefined, sandboxes },
-    seed: { storage: { [workspaceKey(directory, "project")]: { value: { icon: { color: "orange" } } } } },
+    project: { icon: { color: "purple" }, sandboxes },
+    seed: {
+      projects: { local: [] },
+      storage: { [workspaceKey(directory, "project")]: { value: { icon: { color: "orange" } } } },
+    },
   })
   await openProject(page)
   const orange = settings.getByRole("button", { name: "Select orange color", exact: true })
@@ -339,6 +342,11 @@ test("saved workspace colors survive project sync and can be changed and cleared
   await expect(orange).toHaveAttribute("aria-pressed", "true")
   await blue.click()
   await expect(settings.locator('[aria-busy="true"]')).toHaveCount(0)
+  await expect(blue).toHaveAttribute("aria-pressed", "true")
+  await settings.getByRole("button", { name: "Back to projects", exact: true }).click()
+  const row = settings.getByRole("button", { name: "Settings demo", exact: true })
+  await expect(row.locator('[data-slot="project-avatar-surface"]')).toHaveAttribute("data-variant", "blue")
+  await row.click()
   await expect(blue).toHaveAttribute("aria-pressed", "true")
   await blue.click()
   await expect(settings.locator('[aria-busy="true"]')).toHaveCount(0)
@@ -354,7 +362,7 @@ test("saved workspace colors survive project sync and can be changed and cleared
 
 test("clearing project fields removes startup and workspace appearance", async ({ page }) => {
   const { settings } = await open(page, {
-    seed: { storage: { [workspaceKey(directory, "icon")]: { value: override } } },
+    seed: { projects: { local: [] }, storage: { [workspaceKey(directory, "icon")]: { value: override } } },
   })
   await openProject(page)
   const startup = settings.getByRole("textbox", { name: "Worktree startup script", exact: true })
@@ -375,6 +383,10 @@ test("clearing project fields removes startup and workspace appearance", async (
     .locator('input[type="file"]')
     .setInputFiles({ name: "blue.svg", mimeType: "image/svg+xml", buffer: image })
   await expect(icon.locator("img")).toHaveAttribute("src", `data:image/svg+xml;base64,${image.toString("base64")}`)
+  await settings.getByRole("button", { name: "Back to projects", exact: true }).click()
+  const row = settings.getByRole("button", { name: "Settings demo", exact: true })
+  await expect(row.locator("img")).toHaveAttribute("src", `data:image/svg+xml;base64,${image.toString("base64")}`)
+  await row.click()
   await icon.click()
   await expect(icon.locator("img")).toHaveCount(0)
   await expect(color).toHaveAttribute("aria-pressed", "true")

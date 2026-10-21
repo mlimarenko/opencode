@@ -145,7 +145,10 @@ export function SettingsScreen() {
       context.projects.list().find((item) => item.worktree === directory) ??
       context.sync.data.project.find((item) => item.worktree === directory)
 
-    return value ? context.projects.resolve({ expanded: false, ...value }) : undefined
+    // The editor snapshots its initial fields; wait for desktop appearance hydration before mounting it.
+    if (!context.sync.project.appearance(directory).ready) return
+
+    return value ? context.projects.appearance({ expanded: false, ...value }) : undefined
   }
 
   const targetServer = createMemo(() => {
