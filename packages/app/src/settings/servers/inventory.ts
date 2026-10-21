@@ -5,7 +5,7 @@ import type { ServerCtx } from "@/runtime/server/runtime"
 import { pathKey } from "@/workspaces/path-key"
 
 export function settingsProjects(context: {
-  projects: Pick<ServerCtx["projects"], "list" | "closed">
+  projects: Pick<ServerCtx["projects"], "list" | "closed" | "appearance">
   sync: { data: Pick<ServerCtx["sync"]["data"], "project"> }
 }) {
   const tracked = context.projects.list()
@@ -17,7 +17,7 @@ export function settingsProjects(context: {
     // Inventory reads must not allocate directory stores: async cache hydration can trigger an eviction/reload loop.
     ...context.sync.data.project
       .filter((project) => !paths.has(pathKey(project.worktree)) && !closed.has(pathKey(project.worktree)))
-      .map((project) => ({ ...project, expanded: false })),
+      .map((project) => context.projects.appearance({ ...project, expanded: false })),
   ]
 }
 

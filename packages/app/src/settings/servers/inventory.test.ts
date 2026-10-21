@@ -36,7 +36,7 @@ test("settings project inventory reads metadata without acquiring directory stor
   const tracked = { ...projects[0], expanded: true, icon: { override: "local-icon" } }
 
   const inventory = settingsProjects({
-    projects: { list: () => [tracked], closed: () => [projects[1].worktree] },
+    projects: { list: () => [tracked], closed: () => [projects[1].worktree], appearance: (project) => project },
     sync: { data: { project: projects } },
   })
 
