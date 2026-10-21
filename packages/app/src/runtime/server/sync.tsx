@@ -278,6 +278,7 @@ export function createServerSyncContextInner(serverSDK: ServerSDK, data: Data) {
 
   const projectApi = {
     update: applyProjectUpdate,
+    appearance: children.projectAppearance,
     meta(directory: string, patch: ProjectMeta) {
       children.projectMeta(directory, patch)
     },

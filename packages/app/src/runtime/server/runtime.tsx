@@ -204,17 +204,17 @@ function createServerController(
   const notification = createServerNotificationState({ sdk, data, key: connKey, coordinator: notificationCoordinator })
 
   function withWorkspaceIcon<T extends { worktree: string; icon?: Project["icon"] }>(project: T) {
-    const [childStore] = sync.child(project.worktree, { bootstrap: false })
-    const color = childStore.projectMeta?.icon?.color
+    const appearance = sync.project.appearance(project.worktree)
+    const color = appearance.meta?.icon?.color
 
     // Workspace appearance is an explicit override, including an empty value to reset it.
-    if (color !== undefined || childStore.icon !== undefined) {
+    if (color !== undefined || appearance.icon !== undefined) {
       return {
         ...project,
         icon: {
           ...project.icon,
           ...(color !== undefined ? { color } : {}),
-          ...(childStore.icon !== undefined ? { override: childStore.icon } : {}),
+          ...(appearance.icon !== undefined ? { override: appearance.icon } : {}),
         },
       }
     }
@@ -239,9 +239,7 @@ function createServerController(
   const projectsList = createMemo(() => projects.list().map(enrich))
   const projectColors = createMemo(() =>
     projectsList().map((project) => {
-      const [childStore] = sync.child(project.worktree, { bootstrap: false })
-
-      return { ...project, color: childStore.projectMeta?.icon?.color }
+      return { ...project, color: sync.project.appearance(project.worktree).meta?.icon?.color }
     }),
   )
 
@@ -250,9 +248,8 @@ function createServerController(
     project: T | undefined,
   ) {
     if (!project) return
-    const [childStore] = sync.child(project.worktree, { bootstrap: false })
-    const color =
-      childStore.projectMeta?.icon?.color ?? resolveSessionProjectColor(session, projectColors(), sync.data.project)
+    const local = sync.project.appearance(project.worktree)
+    const color = local.meta?.icon?.color ?? resolveSessionProjectColor(session, projectColors(), sync.data.project)
 
     const appearance = withWorkspaceIcon(project)
 
@@ -296,6 +293,7 @@ function createServerController(
       forSession,
       detailsForSession,
       resolve: enrich,
+      appearance: withWorkspaceIcon,
       recentlyClosed: recentlyClosedList,
     },
     notification,
