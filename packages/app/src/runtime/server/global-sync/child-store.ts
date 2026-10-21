@@ -129,7 +129,7 @@ export function createChildStoreManager(input: {
       return false
     }
 
-    metaCache.delete(key)
+    // Appearance belongs to the server/workspace, not to the evictable directory services.
     lifecycle.delete(key)
     mcpDirectories.delete(key)
     activeDirectories.delete(key)
@@ -168,6 +168,44 @@ export function createChildStoreManager(input: {
     }
   }
 
+  function appearance(directory: string) {
+    const key = directoryKey(directory)
+    let meta = metaCache.get(key)
+    let icon = iconCache.get(key)
+
+    if (!meta) {
+      const value = runWithOwner(input.owner, () =>
+        input.persist(Persist.serverWorkspace(input.scope, directory, "project"), ProjectState, { value: undefined }),
+      )
+
+      if (!value) throw new Error(input.translate("error.childStore.persistedProjectMetadataCreateFailed"))
+      meta = { store: value[0], setStore: value[1], ready: value[3] }
+      metaCache.set(key, meta)
+    }
+
+    if (!icon) {
+      const value = runWithOwner(input.owner, () =>
+        input.persist(Persist.serverWorkspace(input.scope, directory, "icon"), IconState, { value: undefined }),
+      )
+
+      if (!value) throw new Error(input.translate("error.childStore.persistedProjectIconCreateFailed"))
+      icon = { store: value[0], setStore: value[1], ready: value[3] }
+      iconCache.set(key, icon)
+    }
+
+    return { meta, icon }
+  }
+
+  function projectAppearance(directory: string) {
+    const value = appearance(directory)
+
+    return {
+      meta: value.meta.store.value,
+      icon: value.icon.store.value,
+      ready: value.meta.ready() && value.icon.ready(),
+    }
+  }
+
   function ensureChild(directory: string) {
     const key = directoryKey(directory)
 
@@ -181,16 +219,10 @@ export function createChildStoreManager(input: {
       if (!vcs) throw new Error(input.translate("error.childStore.persistedCacheCreateFailed"))
       const vcsStore = vcs[0]
 
-      const meta = runWithOwner(input.owner, () =>
-        input.persist(Persist.serverWorkspace(input.scope, directory, "project"), ProjectState, { value: undefined }),
-      )
-
-      if (!meta) throw new Error(input.translate("error.childStore.persistedProjectMetadataCreateFailed"))
-      metaCache.set(key, { store: meta[0], setStore: meta[1], ready: meta[3] })
+      const stored = appearance(directory)
 
       const init = () =>
         createRoot((dispose) => {
-          const initialMeta = meta[0].value
           const [instanceQueriesEnabled, setInstanceQueriesEnabled] = createSignal(false)
 
           const lspQuery = useQuery(() => ({
@@ -200,7 +232,12 @@ export function createChildStoreManager(input: {
 
           const child = createStore<State>({
             project: "",
-            projectMeta: initialMeta,
+            get projectMeta() {
+              return stored.meta.store.value
+            },
+            get icon() {
+              return stored.icon.store.value
+            },
             get provider_ready() {
               return (
                 input.data.location.provider.list({ directory }) !== undefined &&
@@ -289,11 +326,6 @@ export function createChildStoreManager(input: {
             if (!cached?.branch) return
             child[1]("vcs", (value) => value ?? cached)
           })
-
-          onPersistedInit(meta[2], () => {
-            if (child[0].projectMeta !== initialMeta) return
-            child[1]("projectMeta", meta[0].value)
-          })
         })
 
       runWithOwner(input.owner, init)
@@ -346,12 +378,8 @@ export function createChildStoreManager(input: {
   }
 
   function projectMeta(directory: string, patch: ProjectMeta) {
-    const key = directoryKey(directory)
-    const [store, setStore] = ensureChild(directory)
-    const cached = metaCache.get(key)
-
-    if (!cached) return
-    const previous = store.projectMeta ?? {}
+    const cached = appearance(directory).meta
+    const previous = cached.store.value ?? {}
     const icon = patch.icon ? { ...previous.icon, ...patch.icon } : previous.icon
     const commands = patch.commands ? { ...previous.commands, ...patch.commands } : previous.commands
 
@@ -363,7 +391,13 @@ export function createChildStoreManager(input: {
     }
 
     cached.setStore("value", next)
-    setStore("projectMeta", next)
+  }
+
+  function projectIcon(directory: string, value: string | undefined) {
+    const cached = appearance(directory).icon
+
+    if (cached.store.value === value) return
+    cached.setStore("value", value)
   }
 
   return {
@@ -371,6 +405,8 @@ export function createChildStoreManager(input: {
     ensureChild,
     child,
     projectMeta,
+    projectAppearance,
+    projectIcon,
     mark,
     pin,
     unpin,

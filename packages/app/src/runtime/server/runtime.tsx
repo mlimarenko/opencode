@@ -255,15 +255,15 @@ function createServerController(
   // Projects whose repository has no root commit share the `global` ID; their name and icon stay local to the
   // directory because the server cannot tell them apart.
   function withLocalMeta(project: Project): Project {
-    const [child] = sync.child(project.worktree, { bootstrap: false })
-    const color = child.projectMeta?.icon?.color
+    const appearance = sync.project.appearance(project.worktree)
+    const color = appearance.meta?.icon?.color
     return {
       ...project,
-      ...(project.id === "global" ? child.projectMeta : undefined),
+      ...(project.id === "global" ? appearance.meta : undefined),
       icon: {
         ...project.icon,
         ...(color !== undefined ? { color } : {}),
-        ...(child.icon !== undefined ? { override: child.icon } : {}),
+        ...(appearance.icon !== undefined ? { override: appearance.icon } : {}),
       },
     }
   }
@@ -356,7 +356,7 @@ function createServerController(
           session,
           list().map((item) => ({
             ...item,
-            color: sync.child(item.worktree, { bootstrap: false })[0].projectMeta?.icon?.color,
+            color: sync.project.appearance(item.worktree).meta?.icon?.color,
           })),
           sync.data.project,
         )

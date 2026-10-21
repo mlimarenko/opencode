@@ -307,6 +307,7 @@ function createServerSyncContextInner(serverSDK: ServerSDK, data: Data) {
     update: applyProjectUpdate,
     ready: () => projectsQuery.isSuccess,
     refresh: refreshProjects,
+    appearance: children.projectAppearance,
     meta(directory: string, patch: ProjectMeta) {
       children.projectMeta(directory, patch)
     },
