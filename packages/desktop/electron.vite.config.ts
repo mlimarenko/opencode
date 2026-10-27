@@ -1,5 +1,5 @@
 import { defineConfig } from "electron-vite"
-import type { Plugin } from "vite"
+import type { Plugin, UserConfig } from "vite"
 import { BetaNotes } from "./script/beta-notes"
 import { pickerPlugin } from "./script/picker"
 import { nodePtyPackage } from "./script/utils"
@@ -47,19 +47,20 @@ export default defineConfig(async ({ command }) => {
         ? BetaNotes.embed()
         : undefined
 
+  const mainDefines: NonNullable<UserConfig["define"]> = {
+    "import.meta.env.OPENCODE_CHANNEL": JSON.stringify(channel === "local" ? "dev" : channel),
+  }
+
+  // Keep the fork's opt-out when a desktop relaunch omits the wrapper environment.
+  if (process.env.OPENCODE_DISABLE_AUTOUPDATE)
+    mainDefines["process.env.OPENCODE_DISABLE_AUTOUPDATE"] = JSON.stringify(process.env.OPENCODE_DISABLE_AUTOUPDATE)
+
   return {
     main: {
       resolve: {
         dedupe: ["effect"],
       },
-      define: {
-        // Local renderer/server mode still uses the dev application identity and updater policy.
-        "import.meta.env.OPENCODE_CHANNEL": JSON.stringify(channel === "local" ? "dev" : channel),
-        // A standalone fork must keep its opt-out when the desktop session relaunches it without the wrapper environment.
-        ...(process.env.OPENCODE_DISABLE_AUTOUPDATE
-          ? { "process.env.OPENCODE_DISABLE_AUTOUPDATE": JSON.stringify(process.env.OPENCODE_DISABLE_AUTOUPDATE) }
-          : {}),
-      },
+      define: mainDefines,
       build: {
         minify: command === "build",
         rolldownOptions: {

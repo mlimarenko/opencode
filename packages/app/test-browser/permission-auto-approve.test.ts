@@ -5,7 +5,11 @@ import { createStore } from "solid-js/store"
 import { createPermissionAutoApprover } from "@/session/requests/auto-approve"
 import { ScopedKey, ServerScope } from "@/runtime/server/scope"
 
-const [preferences, setPreferences] = createStore({ defaultValue: false, overrides: {} as Record<string, boolean> })
+const [preferences, setPreferences] = createStore<{
+  defaultValue: boolean
+  overrides: Record<string, boolean | undefined>
+}>({ defaultValue: false, overrides: {} })
+
 const permissions = {
   setAutoApproveDefault: (value: boolean) => setPreferences("defaultValue", value),
   setAutoApproveOverride: (key: string, value: boolean | undefined) => setPreferences("overrides", key, value),
@@ -14,18 +18,22 @@ const permissions = {
     preferences.defaultValue ||
     Object.entries(preferences.overrides).some(([key, value]) => value && key.startsWith(ScopedKey.prefix(scope))),
 }
+
 // Bun does not compile Solid's JSX context providers; substitute only the settings boundary, not approval logic.
 const originalSettings = { ...(await import("@/settings/model")) }
+
 mock.module("@/settings/model", () => ({
   useSettings: () => ({ permissions }),
   projectSettingsKey: (scope: ServerScope, projectID: string | undefined) =>
     projectID ? ScopedKey.from(scope, projectID) : undefined,
 }))
+
 afterAll(() => mock.module("@/settings/model", () => originalSettings))
 
 function withSettings(run: (settings: { permissions: typeof permissions }) => void) {
   return createRoot((dispose) => {
     run({ permissions })
+
     return dispose
   })
 }
@@ -35,24 +43,30 @@ test("auto-approval reconnect sweeps session-owned requests without booting hist
     { id: "ses_active", location: { directory: "/active" } },
     { id: "ses_idle", location: { directory: "/historical" } },
   ]
+
   const locationReads: string[] = []
   const sessionReads: string[] = []
   const replies: string[] = []
   const observed = Promise.withResolvers<void>()
   const answered = Promise.withResolvers<void>()
+
   const pending: PermissionRequest = {
     id: "per_idle",
     sessionID: "ses_idle",
     action: "shell",
     resources: ["*"],
   }
+
+  // SAFETY: The callback starts absent, is installed by event.on, and is invoked only through optional chaining.
   const state = { unsubscribed: false, asked: undefined as ((event: { data: PermissionRequest }) => void) | undefined }
+
   const sdk = {
     scope: ServerScope.local,
     connection: { status: () => "connected" },
     event: {
       on(_type: string, callback: (event: { data: PermissionRequest }) => void) {
         state.asked = callback
+
         return () => {
           state.unsubscribed = true
         }
@@ -68,12 +82,14 @@ test("auto-approval reconnect sweeps session-owned requests without booting hist
           list: async (input: { location: { directory: string } }) => {
             locationReads.push(input.location.directory)
             observed.resolve()
+
             return { data: [] }
           },
         },
         list: async (input: { sessionID: string }) => {
           sessionReads.push(input.sessionID)
           observed.resolve()
+
           return input.sessionID === pending.sessionID ? [pending] : []
         },
         reply: async (input: { requestID: string }) => {
@@ -83,6 +99,7 @@ test("auto-approval reconnect sweeps session-owned requests without booting hist
       },
     },
   }
+
   const data = {
     session: {
       list: () => sessions,
@@ -92,12 +109,16 @@ test("auto-approval reconnect sweeps session-owned requests without booting hist
       permission: { list: () => [] },
     },
   }
+
   let settings: { permissions: typeof permissions }
+
   const dispose = withSettings((preferences) => {
     settings = preferences
     preferences.permissions.setAutoApproveDefault(true)
-    createPermissionAutoApprover({ sdk, data } as unknown as Parameters<typeof createPermissionAutoApprover>[0])
+    // SAFETY: The fixture supplies every SDK and data method exercised by this approval scenario.
+    createPermissionAutoApprover({ sdk, data } as Parameters<typeof createPermissionAutoApprover>[0])
   })
+
   try {
     await observed.promise
     expect(locationReads).toEqual([])
@@ -110,6 +131,7 @@ test("auto-approval reconnect sweeps session-owned requests without booting hist
   } finally {
     dispose()
   }
+
   expect(state.unsubscribed).toBe(true)
 })
 
@@ -124,15 +146,18 @@ function approvalFixture(input: {
     action: "shell",
     resources: ["*"],
   }
+
   const replies: string[] = []
   const state = { gets: 0, lists: 0, asked: (_event: { data: PermissionRequest }) => {} }
   const [connection, setConnection] = createStore({ status: "disconnected" })
+
   const sdk = {
     scope: ServerScope.local,
     connection: { status: () => connection.status },
     event: {
       on(_type: string, callback: typeof state.asked) {
         state.asked = callback
+
         return () => {}
       },
     },
@@ -141,12 +166,14 @@ function approvalFixture(input: {
         active: async () => ({ ses_recovery: { type: "busy" } }),
         get: async () => {
           state.gets++
+
           return input.get()
         },
       },
       permission: {
         list: async () => {
           state.lists++
+
           return [pending]
         },
         reply: async ({ requestID }: { requestID: string }) => {
@@ -156,14 +183,18 @@ function approvalFixture(input: {
       },
     },
   }
+
   const sessions = input.cachedProject ? [{ id: pending.sessionID, projectID: input.cachedProject }] : []
   const data = { session: { list: () => sessions, get: () => sessions[0], permission: { list: () => [] } } }
+
   const dispose = withSettings(() => {
     permissions.setAutoApproveDefault(true)
     permissions.setAutoApproveOverride(ScopedKey.from(sdk.scope, "project-a"), true)
     permissions.setAutoApproveOverride(ScopedKey.from(sdk.scope, "project-b"), false)
-    createPermissionAutoApprover({ sdk, data } as unknown as Parameters<typeof createPermissionAutoApprover>[0])
+    // SAFETY: The fixture supplies every SDK and data method exercised by this approval scenario.
+    createPermissionAutoApprover({ sdk, data } as Parameters<typeof createPermissionAutoApprover>[0])
   })
+
   return {
     pending,
     replies,
@@ -176,6 +207,7 @@ function approvalFixture(input: {
 
 test("reconnect resolves the moved session's authoritative project instead of its cached project", async () => {
   const fixture = approvalFixture({ cachedProject: "project-a", get: async () => ({ projectID: "project-b" }) })
+
   try {
     fixture.connect()
     await new Promise<void>((resolve) => setTimeout(resolve, 0))
@@ -188,12 +220,15 @@ test("reconnect resolves the moved session's authoritative project instead of it
 
 test.each(["sweep", "event"] as const)("%s retries a transient authoritative metadata failure", async (origin) => {
   let attempts = 0
+
   const fixture = approvalFixture({
     get: async () => {
       if (++attempts === 1) throw new Error("transient metadata failure")
+
       return { projectID: "project-a" }
     },
   })
+
   try {
     if (origin === "sweep") fixture.connect()
     else fixture.ask()
@@ -209,9 +244,11 @@ test.each(["sweep", "event"] as const)("%s retries a transient authoritative met
 test.each(["dispose", "disable"] as const)("event metadata completion respects %s", async (guard) => {
   const metadata = Promise.withResolvers<{ projectID: string }>()
   const fixture = approvalFixture({ get: () => metadata.promise })
+
   try {
     fixture.ask()
     expect(fixture.state.gets).toBe(1)
+
     if (guard === "dispose") fixture.dispose()
     else permissions.setAutoApproveOverride(ScopedKey.from(ServerScope.local, "project-a"), false)
     metadata.resolve({ projectID: "project-a" })
@@ -228,14 +265,17 @@ test.each(["dispose", "disable"] as const)("event metadata retry respects %s", a
       throw new Error("transient metadata failure")
     },
   })
+
   try {
     fixture.ask()
     await new Promise<void>((resolve) => setTimeout(resolve, 0))
+
     if (guard === "dispose") fixture.dispose()
     else {
       permissions.setAutoApproveDefault(false)
       permissions.setAutoApproveOverride(ScopedKey.from(ServerScope.local, "project-a"), false)
     }
+
     await new Promise<void>((resolve) => setTimeout(resolve, 1150))
     expect(fixture.state.gets).toBe(1)
     expect(fixture.replies).toEqual([])
@@ -250,6 +290,7 @@ test("event metadata failures exhaust the existing two-retry bound", async () =>
       throw new Error("metadata unavailable")
     },
   })
+
   try {
     fixture.ask()
     await new Promise<void>((resolve) => setTimeout(resolve, 3200))
@@ -262,12 +303,14 @@ test("event metadata failures exhaust the existing two-retry bound", async () =>
 
 test("a failed reply retry refreshes project identity before approving again", async () => {
   let reads = 0
+
   const fixture = approvalFixture({
     get: async () => ({ projectID: ++reads === 1 ? "project-a" : "project-b" }),
     reply: async () => {
       throw new Error("reply failed before session moved")
     },
   })
+
   try {
     fixture.ask()
     await new Promise<void>((resolve) => setTimeout(resolve, 1150))
@@ -288,6 +331,7 @@ test.each([
   const inspected: string[] = []
   const listed = Promise.withResolvers<void>()
   const projectID = "project-override"
+
   const sdk = {
     scope: ServerScope.local,
     connection: { status: () => "connected" },
@@ -297,12 +341,14 @@ test.each([
         active: async () => ({ ses_unknown: { type: "busy" } }),
         get: async ({ sessionID }: { sessionID: string }) => {
           inspected.push(sessionID)
+
           return { projectID }
         },
       },
       permission: {
         list: async () => {
           listed.resolve()
+
           return [pending]
         },
         reply: async ({ requestID }: { requestID: string }) => {
@@ -311,12 +357,16 @@ test.each([
       },
     },
   }
+
   const data = { session: { list: () => [], get: () => undefined, permission: { list: () => [] } } }
+
   const dispose = withSettings((settings) => {
     settings.permissions.setAutoApproveDefault(defaultValue)
     settings.permissions.setAutoApproveOverride(ScopedKey.from(sdk.scope, projectID), override)
-    createPermissionAutoApprover({ sdk, data } as unknown as Parameters<typeof createPermissionAutoApprover>[0])
+    // SAFETY: The fixture supplies every SDK and data method exercised by this approval scenario.
+    createPermissionAutoApprover({ sdk, data } as Parameters<typeof createPermissionAutoApprover>[0])
   })
+
   try {
     await listed.promise
     await new Promise<void>((resolve) => setTimeout(resolve, 0))

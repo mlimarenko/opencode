@@ -257,14 +257,16 @@ function createServerController(
   function withLocalMeta(project: Project): Project {
     const appearance = sync.project.appearance(project.worktree)
     const color = appearance.meta?.icon?.color
+    const icon = { ...project.icon }
+
+    if (color !== undefined) icon.color = color
+
+    if (appearance.icon !== undefined) icon.override = appearance.icon
+
     return {
       ...project,
       ...(project.id === "global" ? appearance.meta : undefined),
-      icon: {
-        ...project.icon,
-        ...(color !== undefined ? { color } : {}),
-        ...(appearance.icon !== undefined ? { override: appearance.icon } : {}),
-      },
+      icon,
     }
   }
 
@@ -351,8 +353,10 @@ function createServerController(
       forDirectory,
       forSession: (session: SessionInfo): Project | undefined => {
         const project = projectForSession(session, list())
+
         if (!project) return
         const appearance = sync.project.appearance(session.location.directory)
+
         const color =
           appearance.meta?.icon?.color ??
           resolveSessionProjectColor(
@@ -363,13 +367,16 @@ function createServerController(
             })),
             sync.data.project,
           )
+
+        const icon = { ...project.icon }
+
+        if (color !== undefined) icon.color = color
+
+        if (appearance.icon !== undefined) icon.override = appearance.icon
+
         return {
           ...project,
-          icon: {
-            ...project.icon,
-            ...(color !== undefined ? { color } : {}),
-            ...(appearance.icon !== undefined ? { override: appearance.icon } : {}),
-          },
+          icon,
         }
       },
       last: () => list().find((project) => project.id === projects.last()),
