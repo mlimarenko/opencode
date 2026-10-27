@@ -244,6 +244,7 @@ function createServerSyncContextInner(serverSDK: ServerSDK, data: Data) {
       if (update.time.archived) return rest
 
       const previous = projects.find((project) => project.id === update.id)
+
       // The wire payload carries no worktrees; keep the inventory this project already loaded.
       const next = withWorktreeInventory(
         previous ? updateProjectInfo(previous, update) : normalizeProjectInfo(update),

@@ -1,15 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import type { SessionInfo } from "@opencode/client/promise"
-import {
-  errorMessage,
-  projectForSession,
-  resolveSessionProjectColor,
-  toggleHomeProjectSelection,
-} from "./helpers"
+import { errorMessage, projectForSession, resolveSessionProjectColor, toggleHomeProjectSelection } from "./helpers"
 import { ServerConnection } from "@/runtime/server/registry"
 
 const serverKey = ServerConnection.Key.make
 
+// SAFETY: Project matching reads only the supplied ID, projectID and location; other fields use fixed fixture defaults.
 const session = (input: Partial<SessionInfo> & Pick<SessionInfo, "id"> & { directory: string }) =>
   ({
     projectID: "project",

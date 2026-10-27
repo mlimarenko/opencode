@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test"
+import { Match } from "effect"
 import type { ConfigEntry, OpenCodeEvent, SessionMessageInfo, WorktreeDirectory } from "@opencode/client/promise"
 import { NO_PROVIDER, REMOTE_SERVER, SERVER, holdRoute, project, seed, session, workspaceKey } from "../utils/app"
 import { mockMissingLocation, mockOpenCodeServer } from "../utils/mock-server"
@@ -102,6 +103,7 @@ for (const locale of ["en", "ar"]) {
     page.on("request", (request) => {
       if (request.method() === "POST" && new URL(request.url()).pathname.endsWith("/interrupt"))
         stopped.push(request.url())
+
       if (request.method() === "DELETE" && new URL(request.url()).pathname.startsWith("/api/shell/"))
         stopped.push(request.url())
     })
@@ -113,43 +115,44 @@ for (const locale of ["en", "ar"]) {
       ],
       sessionStatus: { [id]: { type: "busy" }, [childID]: { type: "busy" } },
       seed: { locale },
-      pageMessages: (): { items: SessionMessageInfo[] } => ({
-        items: [
-          { id: "msg_activity_user", type: "user", text: "Inspect the activity capsule", time: { created: 1 } },
-          {
-            id: "msg_activity_assistant",
-            type: "assistant",
-            agent: "build",
-            model: { id: "model", providerID: "provider" },
-            content: [
-              {
-                type: "tool",
-                id: "call_activity_child",
-                name: "subagent",
-                state: {
-                  status: "running",
-                  input: { agent: "explore", description: "Inspect capsule" },
-                  metadata: { sessionID: childID },
+      pageMessages: () =>
+        ({
+          items: [
+            { id: "msg_activity_user", type: "user", text: "Inspect the activity capsule", time: { created: 1 } },
+            {
+              id: "msg_activity_assistant",
+              type: "assistant",
+              agent: "build",
+              model: { id: "model", providerID: "provider" },
+              content: [
+                {
+                  type: "tool",
+                  id: "call_activity_child",
+                  name: "subagent",
+                  state: {
+                    status: "running",
+                    input: { agent: "explore", description: "Inspect capsule" },
+                    metadata: { sessionID: childID },
+                  },
+                  time: { created: 2 },
                 },
-                time: { created: 2 },
-              },
-              {
-                type: "tool",
-                id: "call_activity_shell",
-                name: "shell",
-                state: {
-                  status: "completed",
-                  input: { command: "sleep 120" },
-                  content: [{ type: "text", text: "working" }],
-                  metadata: { shellID: "shell_activity_settings", status: "running" },
+                {
+                  type: "tool",
+                  id: "call_activity_shell",
+                  name: "shell",
+                  state: {
+                    status: "completed",
+                    input: { command: "sleep 120" },
+                    content: [{ type: "text", text: "working" }],
+                    metadata: { shellID: "shell_activity_settings", status: "running" },
+                  },
+                  time: { created: 2, completed: 3 },
                 },
-                time: { created: 2, completed: 3 },
-              },
-            ],
-            time: { created: 2 },
-          },
-        ],
-      }),
+              ],
+              time: { created: 2 },
+            },
+          ],
+        }) satisfies { items: SessionMessageInfo[] },
       shellCommands: [
         {
           id: "shell_activity_settings",
@@ -179,23 +182,27 @@ for (const locale of ["en", "ar"]) {
       await options.getByRole("option", { name: value, exact: true }).click()
       await expect(control).toHaveText(value)
       await page.goBack()
+
       if (value === "Hidden") {
         await expect(capsule).toHaveCount(0)
         await expect(panel).toHaveCount(0)
         continue
       }
+
       await expect(capsule).toBeVisible()
       await expect
         .poll(async () => {
           const anchor = await capsule.boundingBox()
           const container = await page.locator('[data-component="session-composer-lane"]').boundingBox()
+
           if (!anchor || !container) return Infinity
+
           return Math.abs(
-            value === "Center"
-              ? anchor.x + anchor.width / 2 - container.x - container.width / 2
-              : value === "Left"
-                ? anchor.x - container.x
-                : anchor.x + anchor.width - container.x - container.width,
+            Match.value(value).pipe(
+              Match.when("Center", () => anchor.x + anchor.width / 2 - container.x - container.width / 2),
+              Match.when("Left", () => anchor.x - container.x),
+              Match.orElse(() => anchor.x + anchor.width - container.x - container.width),
+            ),
           )
         })
         .toBeLessThan(1)
@@ -205,18 +212,21 @@ for (const locale of ["en", "ar"]) {
         .poll(async () => {
           const anchor = await capsule.boundingBox()
           const bounds = await panel.boundingBox()
+
           if (!anchor || !bounds) return Infinity
+
           return Math.abs(
-            value === "Center"
-              ? anchor.x + anchor.width / 2 - bounds.x - bounds.width / 2
-              : value === "Left"
-                ? anchor.x - bounds.x
-                : anchor.x + anchor.width - bounds.x - bounds.width,
+            Match.value(value).pipe(
+              Match.when("Center", () => anchor.x + anchor.width / 2 - bounds.x - bounds.width / 2),
+              Match.when("Left", () => anchor.x - bounds.x),
+              Match.orElse(() => anchor.x + anchor.width - bounds.x - bounds.width),
+            ),
           )
         })
         .toBeLessThan(1)
       await page.keyboard.press("Escape")
     }
+
     expect(stopped).toEqual([])
     await expect
       .poll(() =>
@@ -539,6 +549,7 @@ test("saved workspace colors survive project sync and can be changed and cleared
       storage: { [workspaceKey(directory, "project")]: { value: { icon: { color: "orange" } } } },
     },
   })
+
   await openProject(page)
   const orange = settings.getByRole("button", { name: "Select orange color", exact: true })
   const blue = settings.getByRole("button", { name: "Select blue color", exact: true })
@@ -567,6 +578,7 @@ test("clearing project fields removes startup and workspace appearance", async (
   const { settings } = await open(page, {
     seed: { projects: { local: [] }, storage: { [workspaceKey(directory, "icon")]: { value: override } } },
   })
+
   await openProject(page)
   const startup = settings.getByRole("textbox", { name: "Worktree startup script", exact: true })
   await expect(startup).toHaveValue("echo setup")
@@ -579,9 +591,11 @@ test("clearing project fields removes startup and workspace appearance", async (
   await startup.blur()
   expect((await saved).postDataJSON()).toEqual({ commands: { start: "" } })
   await expect(settings.locator('[aria-busy="true"]')).toHaveCount(0)
+
   const image = Buffer.from(
     '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="blue"/></svg>',
   )
+
   await settings
     .locator('input[type="file"]')
     .setInputFiles({ name: "blue.svg", mimeType: "image/svg+xml", buffer: image })
@@ -625,6 +639,7 @@ test("shortcuts list Search sessions once and unbind a shortcut while recording 
   await expect(binding).toHaveText("Press keys")
   await expect(unbind).toHaveCount(0)
 })
+
 for (const own of [false, true]) {
   test(`shortcuts list a command that shares Close tab only with its own shortcut: ${own}`, async ({ page }) => {
     const { settings } = await open(page, {
@@ -661,6 +676,7 @@ test("single extension rows stay aligned when switching tabs", async ({ page }) 
     plugins: [{ id: "demo-plugin", source: { type: "package", target: "demo-plugin" } }],
     skills: [{ name: "demo-skill", description: "Demo skill", path: "/skills/demo/SKILL.md" }],
   })
+
   await settings.getByRole("tab", { name: "Extensions", exact: true }).click()
   await expect(settings.getByRole("switch", { name: "demo-mcp", exact: true })).toBeChecked()
   const mcp = settings.getByRole("tabpanel", { name: "MCPs", exact: true }).locator(".settings-extension-row")

@@ -1,4 +1,5 @@
 import type { SessionInfo } from "@opencode/client/promise"
+import { Option, Schema } from "effect"
 import { pathKey } from "@/workspaces/path-key"
 import { isProjectDirectory } from "@/workspaces/paths"
 import type { ServerConnection } from "@/runtime/server/registry"
@@ -75,6 +76,7 @@ export function resolveSessionProjectColor(
 
   for (const directory of [session.location.directory, canonical]) {
     if (!directory) continue
+
     const project = opened
       .filter((item) => item.color !== undefined && isProjectDirectory(item, directory))
       .sort((a, b) => b.worktree.length - a.worktree.length)[0]
@@ -83,12 +85,12 @@ export function resolveSessionProjectColor(
   }
 }
 
+// SAFETY: This boundary accepts thrown request values and decodes their message before use.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
 export const errorMessage = (err: unknown, fallback: string) => {
-  if (err && typeof err === "object" && "data" in err) {
-    const data = (err as { data?: { message?: string } }).data
+  const decoded = Schema.decodeUnknownOption(Schema.Struct({ data: Schema.Struct({ message: Schema.String }) }))(err)
 
-    if (data?.message) return data.message
-  }
+  if (Option.isSome(decoded) && decoded.value.data.message) return decoded.value.data.message
 
   if (err instanceof Error) return err.message
 

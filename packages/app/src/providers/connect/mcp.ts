@@ -1,4 +1,5 @@
 import { useMutation } from "@tanstack/solid-query"
+import { Predicate } from "effect"
 import type { Accessor } from "solid-js"
 import { useLanguage } from "@/runtime/i18n/language"
 import { useData } from "@/runtime/server/current"
@@ -13,7 +14,7 @@ export type McpControls = {
   change: (name: string, enabled: boolean) => void
 }
 
-export function useMcpToggle(directory?: Accessor<string | undefined>, onSuccess?: () => unknown) {
+export function useMcpToggle(directory?: Accessor<string | undefined>, onSuccess?: () => void) {
   const data = useData()
   const serverSDK = useServerSDK()
   const platform = usePlatform()
@@ -27,15 +28,15 @@ export function useMcpToggle(directory?: Accessor<string | undefined>, onSuccess
 
   return useMutation(() => ({
     mutationFn: async (input: string | { name: string; enabled: boolean; directory?: string }) => {
-      const name = typeof input === "string" ? input : input.name
-      const ref = typeof input !== "string" && input.directory ? { directory: input.directory } : location()
+      const name = Predicate.isString(input) ? input : input.name
+      const ref = !Predicate.isString(input) && input.directory ? { directory: input.directory } : location()
       const server = (await serverSDK.api.mcp.list({ location: ref })).data.find((item) => item.name === name)
 
-      if (!server || (server.status.status === "pending" && typeof input === "string")) return
-      const enabled =
-        typeof input === "string"
-          ? server.status.status !== "connected" && server.status.status !== "idle"
-          : input.enabled
+      if (!server || (server.status.status === "pending" && Predicate.isString(input))) return
+
+      const enabled = Predicate.isString(input)
+        ? server.status.status !== "connected" && server.status.status !== "idle"
+        : input.enabled
 
       if (!enabled) {
         await serverSDK.api.mcp.disconnect({ server: name, location: ref })
