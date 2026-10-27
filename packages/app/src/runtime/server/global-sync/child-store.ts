@@ -8,6 +8,7 @@ import {
   type ChildOptions,
   type DirState,
   type MetaCache,
+  type IconCache,
   type ProjectMeta,
   type State,
 } from "./types"
@@ -18,7 +19,7 @@ import { directoryKey, type DirectoryKey } from "./utils"
 import type { ServerScope } from "@/runtime/server/scope"
 import type { Data } from "@opencode/client/solid"
 import { normalizeAgentList, normalizeProviderList } from "./utils"
-import { ProjectState, VcsState } from "../persistence"
+import { IconState, ProjectState, VcsState } from "../persistence"
 
 export function createChildStoreManager(input: {
   owner: Owner
@@ -39,6 +40,7 @@ export function createChildStoreManager(input: {
 }) {
   const children: Record<string, [Store<State>, SetStoreFunction<State>]> = {}
   const metaCache = new Map<string, MetaCache>()
+  const iconCache = new Map<string, IconCache>()
   const lifecycle = new Map<string, DirState>()
   const pins = new Map<string, number>()
   const ownerPins = new WeakMap<object, Set<string>>()
@@ -234,9 +236,6 @@ export function createChildStoreManager(input: {
             project: "",
             get projectMeta() {
               return stored.meta.store.value
-            },
-            get icon() {
-              return stored.icon.store.value
             },
             get provider_ready() {
               return (
