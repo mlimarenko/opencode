@@ -1,6 +1,7 @@
 import { getFilename } from "@opencode/util/path"
 import type { ProjectUpdateInput } from "@opencode/client/promise"
 import { createMemo } from "solid-js"
+import { Predicate } from "effect"
 import { createStore } from "solid-js/store"
 import { useGlobal } from "@/runtime/server/runtime"
 import { useLanguage } from "@/runtime/i18n/language"
@@ -37,12 +38,12 @@ export function createEditProjectModel(props: { project: LocalProject; server: S
   let iconInput: HTMLInputElement | undefined
   let queue = Promise.resolve()
 
-  const persist = (save: () => void | Promise<unknown>, complete: () => void) => {
+  const persist = <A>(save: () => A | Promise<A>, complete: () => void) => {
     setStore("saving", (value) => value + 1)
     queue = queue
       .then(save)
       .then(complete)
-      .catch((error: unknown) => {
+      .catch((error) => {
         showToast({
           variant: "error",
           title: language.t("common.requestFailed"),
@@ -104,7 +105,7 @@ export function createEditProjectModel(props: { project: LocalProject; server: S
     reader.onload = (event) => {
       const result = event.target?.result
 
-      if (typeof result !== "string") return
+      if (!Predicate.isString(result)) return
       setStore("iconOverride", result)
       setStore("iconHover", false)
       saveIcon(result)
@@ -122,6 +123,7 @@ export function createEditProjectModel(props: { project: LocalProject; server: S
     saveStartup,
     setColor(value: string | undefined) {
       setStore("color", value)
+
       if (!store.saving && value === saved.color) return
       persist(
         () => serverCtx().sync.project.meta(props.project.worktree, { icon: { color: value ?? "" } }),

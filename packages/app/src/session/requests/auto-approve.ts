@@ -50,6 +50,7 @@ export function createPermissionAutoApprover(input: { sdk: ServerSDK; data: Data
       // Track project preference changes for visible requests; eligibility here
       // only starts a lookup and never authorizes a reply from cached metadata.
       if (!covers(session.projectID)) continue
+
       for (const request of input.data.session.permission.list(session.id) ?? []) void considerWithRetry(request, 0)
     }
   })
@@ -74,6 +75,7 @@ export function createPermissionAutoApprover(input: { sdk: ServerSDK; data: Data
     // Session-owned reads resolve current placement on the server and borrow
     // only existing instances. Directory inventory reads would boot cold worktrees.
     const active = await input.sdk.api.session.active().catch(() => undefined)
+
     if (state.disposed || !enabled() || generation !== state.generation) return true
     const ids = [...new Set([...Object.keys(active ?? {}), ...input.data.session.list().map((session) => session.id)])]
 
@@ -93,6 +95,7 @@ export function createPermissionAutoApprover(input: { sdk: ServerSDK; data: Data
 
   async function considerWithRetry(permission: PermissionRequest, attempt: number) {
     const complete = await consider(permission)
+
     if (complete || attempt >= retryLimit) return
     setTimeout(
       () => {
@@ -107,11 +110,15 @@ export function createPermissionAutoApprover(input: { sdk: ServerSDK; data: Data
   // the session to a project with different permissions. This read does not boot its location.
   async function consider(permission: PermissionRequest, generation?: number): Promise<boolean> {
     if (state.disposed || !enabled() || state.responded.has(permission.id)) return true
+
     if (generation !== undefined && generation !== state.generation) return true
     const session = await input.sdk.api.session.get({ sessionID: permission.sessionID }).catch(() => undefined)
+
     // Report an incomplete lookup to its retry owner rather than abandoning a hidden request.
     if (!session) return false
+
     if (generation !== undefined && generation !== state.generation) return true
+
     return approve(permission, session.projectID)
   }
 
@@ -119,12 +126,14 @@ export function createPermissionAutoApprover(input: { sdk: ServerSDK; data: Data
     // Evaluate the current project choice after the metadata await, including on retries.
     if (state.disposed || !covers(projectID) || state.responded.has(permission.id)) return true
     remember(permission.id)
+
     return input.sdk.api.permission
       .reply({ sessionID: permission.sessionID, requestID: permission.id, decision: "once" })
       .then(() => true)
       .catch(() => {
         // Retry owners also reacquire project identity before retrying a failed reply.
         state.responded.delete(permission.id)
+
         return false
       })
   }
