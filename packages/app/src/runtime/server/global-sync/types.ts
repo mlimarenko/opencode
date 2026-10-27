@@ -3,7 +3,7 @@ import type { ReferenceInfo } from "@opencode/client/promise"
 import type { CommandInfo, McpResource, McpServer } from "@opencode/client/promise"
 import type { Accessor } from "solid-js"
 import type { SetStoreFunction, Store } from "solid-js/store"
-import { ProjectState } from "../persistence"
+import { IconState, ProjectState } from "../persistence"
 
 export type ProjectMeta = NonNullable<typeof ProjectState.Type.value>
 
@@ -33,6 +33,12 @@ export type State = {
 export type MetaCache = {
   store: Store<typeof ProjectState.Type>
   setStore: SetStoreFunction<typeof ProjectState.Type>
+  ready: Accessor<boolean>
+}
+
+export type IconCache = {
+  store: Store<typeof IconState.Type>
+  setStore: SetStoreFunction<typeof IconState.Type>
   ready: Accessor<boolean>
 }
 

@@ -71,6 +71,8 @@ export const ModelState = Persistence.struct({
   ),
 })
 
+export const IconState = Persistence.struct({ value: Schema.optional(Schema.String) })
+
 export const VcsState = Persistence.struct({
   value: Schema.optional(
     Persistence.struct({
