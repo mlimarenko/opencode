@@ -352,15 +352,25 @@ function createServerController(
       forSession: (session: SessionInfo): Project | undefined => {
         const project = projectForSession(session, list())
         if (!project) return
-        const color = resolveSessionProjectColor(
-          session,
-          list().map((item) => ({
-            ...item,
-            color: sync.project.appearance(item.worktree).meta?.icon?.color,
-          })),
-          sync.data.project,
-        )
-        return color === undefined ? project : { ...project, icon: { ...project.icon, color } }
+        const appearance = sync.project.appearance(session.location.directory)
+        const color =
+          appearance.meta?.icon?.color ??
+          resolveSessionProjectColor(
+            session,
+            list().map((item) => ({
+              ...item,
+              color: sync.project.appearance(item.worktree).meta?.icon?.color,
+            })),
+            sync.data.project,
+          )
+        return {
+          ...project,
+          icon: {
+            ...project.icon,
+            ...(color !== undefined ? { color } : {}),
+            ...(appearance.icon !== undefined ? { override: appearance.icon } : {}),
+          },
+        }
       },
       last: () => list().find((project) => project.id === projects.last()),
       // Marks the project of a directory as used from this client, and as the last one.
