@@ -130,50 +130,60 @@ test("recently closed fills remaining slots in Home order without open or duplic
 })
 
 for (const local of [false, true]) {
-test(`session avatars retain workspace color for a concrete project in an external worktree: session override ${local}`, async ({
-  page,
-}, testInfo) => {
-  await page.setViewportSize({ width: 1440, height: 900 })
-  const root = "C:/OpenCode/Color workspace"
-  const concrete = project({ id: "proj_product", directory: `${root}/product`, name: "Product" })
-  const workspace = await openSession(page, {
-    name: "Color workspace",
-    directory: root,
-    projects: [project({ id: "proj_color_workspace", directory: root, name: "Color workspace" }), concrete],
-    sessions: [{ id: "ses_color", title: "Color session", projectID: concrete.id, directory: "C:/worktrees/feature" }],
-    seed: {
-      settings: { appearance: { tabLayout: "vertical" } },
-      storage: {
-        [workspaceKey(root, "project")]: { value: { icon: { color: "pink" } } },
-        ...(local ? { [workspaceKey("C:/worktrees/feature", "project")]: { value: { icon: { color: "orange" } } } } : {}),
+  test(`session avatars retain workspace color for a concrete project in an external worktree: session override ${local}`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    const root = "C:/OpenCode/Color workspace"
+    const concrete = project({ id: "proj_product", directory: `${root}/product`, name: "Product" })
+
+    const storage = {
+      [workspaceKey(root, "project")]: { value: { icon: { color: "pink" } } },
+    }
+
+    if (local) storage[workspaceKey("C:/worktrees/feature", "project")] = { value: { icon: { color: "orange" } } }
+
+    const workspace = await openSession(page, {
+      name: "Color workspace",
+      directory: root,
+      projects: [project({ id: "proj_color_workspace", directory: root, name: "Color workspace" }), concrete],
+      sessions: [
+        { id: "ses_color", title: "Color session", projectID: concrete.id, directory: "C:/worktrees/feature" },
+      ],
+      seed: {
+        settings: { appearance: { tabLayout: "vertical" } },
+        storage,
       },
-    },
+    })
+
+    const tab = page
+      .locator("[data-titlebar-tab]")
+      .filter({ has: page.locator(`a[href="${sessionHref("ses_color")}"]`) })
+
+    const avatar = tab.locator('[data-slot="project-avatar-surface"]')
+    await expect(avatar).toHaveAttribute("data-variant", local ? "orange" : "pink")
+    await workspace.push([
+      {
+        id: "evt_project_color",
+        created: Date.now(),
+        type: "project.updated",
+        data: {
+          ...concrete,
+          canonical: concrete.worktree,
+          time: { ...concrete.time, active: 0 },
+          icon: { color: "blue" },
+        },
+      } satisfies OpenCodeEvent,
+    ])
+    await expect(avatar).toHaveAttribute("data-variant", local ? "orange" : "pink")
+    await expectPath(page, sessionHref("ses_color"))
+    await expectSessionTitle(page, "Color session")
+    await page.screenshot({ path: testInfo.outputPath("colors-desktop.png") })
+    await page.setViewportSize({ width: 800, height: 700 })
+    await expect(avatar).toBeVisible()
+    await expect(avatar).toHaveAttribute("data-variant", local ? "orange" : "pink")
+    await page.screenshot({ path: testInfo.outputPath("colors-constrained.png") })
   })
-  const tab = page.locator("[data-titlebar-tab]").filter({ has: page.locator(`a[href="${sessionHref("ses_color")}"]`) })
-  const avatar = tab.locator('[data-slot="project-avatar-surface"]')
-  await expect(avatar).toHaveAttribute("data-variant", local ? "orange" : "pink")
-  await workspace.push([
-    {
-      id: "evt_project_color",
-      created: Date.now(),
-      type: "project.updated",
-      data: {
-        ...concrete,
-        canonical: concrete.worktree,
-        time: { ...concrete.time, active: 0 },
-        icon: { color: "blue" },
-      },
-    } as OpenCodeEvent,
-  ])
-  await expect(avatar).toHaveAttribute("data-variant", local ? "orange" : "pink")
-  await expectPath(page, sessionHref("ses_color"))
-  await expectSessionTitle(page, "Color session")
-  await page.screenshot({ path: testInfo.outputPath("colors-desktop.png") })
-  await page.setViewportSize({ width: 800, height: 700 })
-  await expect(avatar).toBeVisible()
-  await expect(avatar).toHaveAttribute("data-variant", local ? "orange" : "pink")
-  await page.screenshot({ path: testInfo.outputPath("colors-constrained.png") })
-})
 }
 
 for (const server of [SERVER, REMOTE_SERVER]) {
@@ -183,9 +193,11 @@ for (const server of [SERVER, REMOTE_SERVER]) {
       sessions: [b],
       seed: { tabs: [a.id, { session: b.id, server }] },
     })
+
     if (server === REMOTE_SERVER) {
       await mockRemoteServer(page, { sessions: [session({ ...b, directory: "/remote/project" })] })
     }
+
     await page.route(
       (url) => url.origin === SERVER && url.pathname === `/api/session/${a.id}`,
       (route) => route.fulfill({ status: 504, json: { message: "Fixture metadata timeout" } }),
@@ -212,6 +224,7 @@ test("session metadata failure can be retried without reloading or looping", asy
     (url) => url.origin === SERVER && url.pathname === `/api/session/${a.id}`,
     (route) => {
       state.requests++
+
       return route.fulfill(
         state.fail
           ? { status: 504, json: { message: "Fixture metadata timeout" } }

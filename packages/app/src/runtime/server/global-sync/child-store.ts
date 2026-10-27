@@ -90,7 +90,7 @@ export function createChildStoreManager(input: {
     if (!current) return
 
     if (current === input.owner) return
-    const key = current as object
+    const key = current
     const set = ownerPins.get(key)
 
     if (set?.has(directory)) return

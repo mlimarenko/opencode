@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, mock, test } from "bun:test"
 import { createRoot, createSignal, getOwner } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
+import { Predicate } from "effect"
 import type { State } from "./types"
 import type { QueryOptionsApi } from "../sync"
 import { ServerScope } from "@/runtime/server/scope"
@@ -19,6 +20,7 @@ const persist: typeof persisted = (_target, _schema, initial) => [
 
 const path = { state: "", config: "", worktree: "", directory: "", home: "" }
 
+// SAFETY: Child-store tests use only the listed Location read selectors, all supplied by this fixture.
 const data = {
   location: {
     info: () => undefined,
@@ -33,8 +35,9 @@ const data = {
     },
     vcs: { info: () => undefined },
   },
-} as unknown as Data
+} as Data
 
+// SAFETY: The mocked query adapter reads only the queryKey, enabled and data functions declared below.
 const queryOptionsApi = {
   globalConfig: () => ({ queryKey: ["globalConfig"], queryFn: async () => ({}) }),
   projects: () => ({ queryKey: ["projects"], queryFn: async () => [] }),
@@ -54,7 +57,7 @@ const queryOptionsApi = {
   lsp: (directory: string) => ({ queryKey: [directory, "lsp"], queryFn: async () => [] }),
   references: (directory: string) => ({ queryKey: [directory, "references"], queryFn: async () => [] }),
   sessions: (directory: string) => ({ queryKey: [directory, "loadSessions"] as const }),
-} as unknown as QueryOptionsApi
+} as QueryOptionsApi
 
 function setup(input: { connected?: () => boolean; persist?: typeof persisted } = {}) {
   const bootstraps: string[] = []
@@ -121,20 +124,24 @@ describe("createChildStoreManager", () => {
   test("hydrates and edits appearance without allocating directory stores", async () => {
     const release = Promise.withResolvers<void>()
     const inits: Promise<string>[] = []
+
     const delayed: typeof persisted = (target, _schema, initial) => {
       const store = createStore(initial)
       const [ready, setReady] = createSignal(false)
-      const key = typeof target === "string" ? target : target.key
+      const key = Predicate.isString(target) ? target : target.key
+
       const init = release.promise.then(() => {
         store[1](reconcile({ value: key === "workspace:icon" ? "saved-image" : { icon: { color: "orange" } } }))
         setReady(true)
 
         return "stored"
       })
+
       inits.push(init)
 
       return [...store, init, Object.assign(ready, { promise: init })]
     }
+
     const { manager, bootstraps, queries, dispose } = setup({ persist: delayed })
 
     try {
@@ -163,10 +170,12 @@ describe("createChildStoreManager", () => {
 
     try {
       Array.from({ length: 30 }, (_, index) => `/pinned-${index}`).forEach((directory) => {
+        // SAFETY: Pinned entries cannot be evicted; this case never reads their state fields.
         manager.children[directory] = createStore({} as State)
         manager.pin(directory)
       })
 
+      // SAFETY: mark only inspects this entry's identity, not its child state fields.
       manager.children["/active"] = createStore({} as State)
       manager.mark("/active")
 

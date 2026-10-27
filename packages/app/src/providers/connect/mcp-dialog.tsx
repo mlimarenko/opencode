@@ -1,6 +1,7 @@
 import { Component, createEffect, createMemo, on, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import fuzzysort from "fuzzysort"
+import { Predicate } from "effect"
 import { useData } from "@/runtime/server/current"
 import { useWorkspaceLocation } from "@/workspaces/location"
 import { Button } from "@opencode/ui/button"
@@ -200,18 +201,20 @@ export const DialogMcp: Component<{ directory: string; server?: string }> = (pro
             {(item, row) => {
               const server = () => servers().find((entry) => entry.name === item().name)
               const status = () => server()?.status
+
               const error = () => {
                 const current = status()
 
                 return current?.status === "failed" ? current.error : undefined
               }
+
               // The switch would start sign-in anyway, so an auth-gated server shows that action instead.
               const signIn = () => status()?.status === "needs_auth" && !!server()?.integrationID
 
               const busy = () => {
                 const target = toggle.isPending ? toggle.variables : undefined
 
-                return (typeof target === "string" ? target : target?.name) === item().name
+                return (Predicate.isString(target) ? target : target?.name) === item().name
               }
 
               // The dot shows the status, as in the session's MCP list; the words stay for assistive technology.

@@ -9,7 +9,12 @@ function setup(input?: {
   setupHeadersTimeoutMs?: number
 }) {
   const pending: Array<{ url: string; signal: AbortSignal; resolve: () => void }> = []
-  const logs: Array<{ message: string; data: Record<string, unknown> }> = []
+
+  const logs: Array<{
+    message: string
+    data: Parameters<NonNullable<Parameters<typeof createRequestQueue>[0]["log"]>>[1]
+  }> = []
+
   let clock = 0
 
   const queue = createRequestQueue({
@@ -152,10 +157,13 @@ describe("createRequestQueue", () => {
   test("MCP discovery cannot occupy every slot ahead of chat reads", async () => {
     for (const path of ["/api/command", "/api/mcp", "/api/mcp/resource"]) {
       const input = setup({ limit: 4, slowLimit: 2 })
+
       const discovery = Array.from({ length: 4 }, (_, index) =>
         input.queue.fetch(`http://server${path}?location[directory]=%2Fproject-${index}`),
       )
+
       const chat = input.queue.fetch("http://server/api/session/ses_1/message")
+
       try {
         expect(input.pending.map((item) => new URL(item.url).pathname)).toEqual([
           path,
@@ -170,6 +178,7 @@ describe("createRequestQueue", () => {
         input.pending.forEach((item) => item.resolve())
         await Promise.all([...discovery, chat])
       }
+
       expect(input.queue.inflight()).toBe(0)
       expect(input.queue.queued()).toBe(0)
     }
@@ -204,7 +213,9 @@ describe("createRequestQueue", () => {
     expect(input.queue.queued()).toBe(1)
     const error = await dead.catch((cause: unknown) => cause)
     expect(error).toBeInstanceOf(DOMException)
-    expect((error as DOMException).name).toBe("TimeoutError")
+
+    if (!(error instanceof DOMException)) throw new Error("Expected a DOMException")
+    expect(error.name).toBe("TimeoutError")
     expect(input.pending.map((item) => new URL(item.url).pathname)).toEqual(["/api/dead", "/api/next"])
     input.pending[1]!.resolve()
     await expect(next).resolves.toBeInstanceOf(Response)
@@ -222,11 +233,13 @@ describe("createRequestQueue", () => {
     ]
 
     const errors = await Promise.all(others.map((request) => request.catch((cause: unknown) => cause)))
-    expect(errors.map((error) => (error as DOMException).name)).toEqual([
-      "TimeoutError",
-      "TimeoutError",
-      "TimeoutError",
-    ])
+    expect(
+      errors.map((error) => {
+        if (!(error instanceof DOMException)) throw new Error("Expected a DOMException")
+
+        return error.name
+      }),
+    ).toEqual(["TimeoutError", "TimeoutError", "TimeoutError"])
     // Past the normal deadline, the create is still on the wire.
     expect(input.pending[0]!.signal.aborted).toBe(false)
     input.pending[0]!.resolve()
