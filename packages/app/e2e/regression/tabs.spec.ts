@@ -130,7 +130,8 @@ test("recently closed fills remaining slots in Home order without open or duplic
   await expect(items).toHaveText(["OOther session 9"])
 })
 
-test("session avatars retain workspace color for a concrete project in an external worktree", async ({
+for (const local of [false, true]) {
+test(`session avatars retain workspace color for a concrete project in an external worktree: session override ${local}`, async ({
   page,
 }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 900 })
@@ -143,12 +144,15 @@ test("session avatars retain workspace color for a concrete project in an extern
     sessions: [{ id: "ses_color", title: "Color session", projectID: concrete.id, directory: "C:/worktrees/feature" }],
     seed: {
       settings: { appearance: { tabLayout: "vertical" } },
-      storage: { [workspaceKey(root, "project")]: { value: { icon: { color: "pink" } } } },
+      storage: {
+        [workspaceKey(root, "project")]: { value: { icon: { color: "pink" } } },
+        ...(local ? { [workspaceKey("C:/worktrees/feature", "project")]: { value: { icon: { color: "orange" } } } } : {}),
+      },
     },
   })
   const tab = page.locator("[data-titlebar-tab]").filter({ has: page.locator(`a[href="${sessionHref("ses_color")}"]`) })
   const avatar = tab.locator('[data-slot="project-avatar-surface"]')
-  await expect(avatar).toHaveAttribute("data-variant", "pink")
+  await expect(avatar).toHaveAttribute("data-variant", local ? "orange" : "pink")
   await workspace.push([
     {
       id: "evt_project_color",
@@ -162,15 +166,16 @@ test("session avatars retain workspace color for a concrete project in an extern
       },
     } as OpenCodeEvent,
   ])
-  await expect(avatar).toHaveAttribute("data-variant", "pink")
+  await expect(avatar).toHaveAttribute("data-variant", local ? "orange" : "pink")
   await expectPath(page, sessionHref("ses_color"))
   await expectSessionTitle(page, "Color session")
   await page.screenshot({ path: testInfo.outputPath("colors-desktop.png") })
   await page.setViewportSize({ width: 800, height: 700 })
   await expect(avatar).toBeVisible()
-  await expect(avatar).toHaveAttribute("data-variant", "pink")
+  await expect(avatar).toHaveAttribute("data-variant", local ? "orange" : "pink")
   await page.screenshot({ path: testInfo.outputPath("colors-constrained.png") })
 })
+}
 
 for (const server of [SERVER, REMOTE_SERVER]) {
   test(`session metadata failure does not follow navigation to another tab on ${server}`, async ({ page }) => {
