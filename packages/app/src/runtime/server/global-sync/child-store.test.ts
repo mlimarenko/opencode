@@ -21,6 +21,7 @@ const persist: typeof persisted = (_target, _schema, initial) => [
 const path = { state: "", config: "", worktree: "", directory: "", home: "" }
 
 // SAFETY: Child-store tests use only the listed Location read selectors, all supplied by this fixture.
+// oxlint-disable-next-line anti-slop/no-chained-type-assertions -- SAFETY: The full client includes unrelated services unused by this fixture.
 const data = {
   location: {
     info: () => undefined,
@@ -35,9 +36,10 @@ const data = {
     },
     vcs: { info: () => undefined },
   },
-} as Data
+} as unknown as Data
 
 // SAFETY: The mocked query adapter reads only the queryKey, enabled and data functions declared below.
+// oxlint-disable-next-line anti-slop/no-chained-type-assertions -- SAFETY: useQuery is replaced below; this adapter deliberately omits its runtime data-tag symbols.
 const queryOptionsApi = {
   globalConfig: () => ({ queryKey: ["globalConfig"], queryFn: async () => ({}) }),
   projects: () => ({ queryKey: ["projects"], queryFn: async () => [] }),
@@ -57,7 +59,7 @@ const queryOptionsApi = {
   lsp: (directory: string) => ({ queryKey: [directory, "lsp"], queryFn: async () => [] }),
   references: (directory: string) => ({ queryKey: [directory, "references"], queryFn: async () => [] }),
   sessions: (directory: string) => ({ queryKey: [directory, "loadSessions"] as const }),
-} as QueryOptionsApi
+} as unknown as QueryOptionsApi
 
 function setup(input: { connected?: () => boolean; persist?: typeof persisted } = {}) {
   const bootstraps: string[] = []

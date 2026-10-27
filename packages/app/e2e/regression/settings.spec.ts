@@ -1,8 +1,8 @@
 import { expect, test, type Page } from "@playwright/test"
 import { Match } from "effect"
-import type { ConfigEntry, OpenCodeEvent, SessionMessageInfo, WorktreeDirectory } from "@opencode/client/promise"
+import type { ConfigEntry, OpenCodeEvent, WorktreeDirectory } from "@opencode/client/promise"
 import { NO_PROVIDER, REMOTE_SERVER, SERVER, holdRoute, project, seed, session, workspaceKey } from "../utils/app"
-import { mockMissingLocation, mockOpenCodeServer } from "../utils/mock-server"
+import { mockMissingLocation, mockOpenCodeServer, type MockServerConfig } from "../utils/mock-server"
 import { mockRemoteServer, mockWorkspace, openSession, openSettings, type WorkspaceInput } from "../utils/workspace"
 
 const directory = "C:/Projects/settings-demo"
@@ -115,44 +115,43 @@ for (const locale of ["en", "ar"]) {
       ],
       sessionStatus: { [id]: { type: "busy" }, [childID]: { type: "busy" } },
       seed: { locale },
-      pageMessages: () =>
-        ({
-          items: [
-            { id: "msg_activity_user", type: "user", text: "Inspect the activity capsule", time: { created: 1 } },
-            {
-              id: "msg_activity_assistant",
-              type: "assistant",
-              agent: "build",
-              model: { id: "model", providerID: "provider" },
-              content: [
-                {
-                  type: "tool",
-                  id: "call_activity_child",
-                  name: "subagent",
-                  state: {
-                    status: "running",
-                    input: { agent: "explore", description: "Inspect capsule" },
-                    metadata: { sessionID: childID },
-                  },
-                  time: { created: 2 },
+      pageMessages: (): ReturnType<NonNullable<MockServerConfig["pageMessages"]>> => ({
+        items: [
+          { id: "msg_activity_user", type: "user", text: "Inspect the activity capsule", time: { created: 1 } },
+          {
+            id: "msg_activity_assistant",
+            type: "assistant",
+            agent: "build",
+            model: { id: "model", providerID: "provider" },
+            content: [
+              {
+                type: "tool",
+                id: "call_activity_child",
+                name: "subagent",
+                state: {
+                  status: "running",
+                  input: { agent: "explore", description: "Inspect capsule" },
+                  metadata: { sessionID: childID },
                 },
-                {
-                  type: "tool",
-                  id: "call_activity_shell",
-                  name: "shell",
-                  state: {
-                    status: "completed",
-                    input: { command: "sleep 120" },
-                    content: [{ type: "text", text: "working" }],
-                    metadata: { shellID: "shell_activity_settings", status: "running" },
-                  },
-                  time: { created: 2, completed: 3 },
+                time: { created: 2 },
+              },
+              {
+                type: "tool",
+                id: "call_activity_shell",
+                name: "shell",
+                state: {
+                  status: "completed",
+                  input: { command: "sleep 120" },
+                  content: [{ type: "text", text: "working" }],
+                  metadata: { shellID: "shell_activity_settings", status: "running" },
                 },
-              ],
-              time: { created: 2 },
-            },
-          ],
-        }) satisfies { items: SessionMessageInfo[] },
+                time: { created: 2, completed: 3 },
+              },
+            ],
+            time: { created: 2 },
+          },
+        ],
+      }),
       shellCommands: [
         {
           id: "shell_activity_settings",
@@ -545,7 +544,6 @@ test("saved workspace colors survive project sync and can be changed and cleared
   const { settings } = await open(page, {
     project: { icon: { color: "purple" }, sandboxes },
     seed: {
-      projects: { local: [] },
       storage: { [workspaceKey(directory, "project")]: { value: { icon: { color: "orange" } } } },
     },
   })
@@ -576,7 +574,7 @@ test("saved workspace colors survive project sync and can be changed and cleared
 
 test("clearing project fields removes startup and workspace appearance", async ({ page }) => {
   const { settings } = await open(page, {
-    seed: { projects: { local: [] }, storage: { [workspaceKey(directory, "icon")]: { value: override } } },
+    seed: { storage: { [workspaceKey(directory, "icon")]: { value: override } } },
   })
 
   await openProject(page)
