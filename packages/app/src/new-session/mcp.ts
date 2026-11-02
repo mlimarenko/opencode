@@ -85,7 +85,7 @@ export function createDraftMcpControls(input: { draftID: string; worktree: () =>
       entries.flatMap(([name, enabled]) => {
         const status = catalog.data.find((server) => server.name === name)?.status.status
 
-        if (!status || (enabled ? status === "connected" : status === "disabled")) return []
+        if (!status || (enabled ? status === "connected" || status === "idle" : status === "disabled")) return []
 
         return [toggle(directory, name, enabled)]
       }),
@@ -97,7 +97,7 @@ export function createDraftMcpControls(input: { draftID: string; worktree: () =>
     const unresolved = entries.find(([name, enabled]) => {
       const status = current.data.find((server) => server.name === name)?.status.status
 
-      return enabled ? status !== "connected" : status !== undefined && status !== "disabled"
+      return enabled ? status !== "connected" && status !== "idle" : status !== undefined && status !== "disabled"
     })
 
     if (!unresolved) return true

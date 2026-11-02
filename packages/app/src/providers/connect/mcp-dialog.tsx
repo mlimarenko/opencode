@@ -20,6 +20,7 @@ import "@/shell/search-list.css"
 
 const statusLabels = {
   connected: "mcp.status.connected",
+  idle: "mcp.status.idle",
   failed: "mcp.status.failed",
   needs_auth: "mcp.status.needs_auth",
   disabled: "mcp.status.disabled",
@@ -95,8 +96,8 @@ export function McpDialog(props: {
   const select = (name: string) => {
     const status = statusOf(name)
 
-    if (status?.status !== "failed") return toggle(name, status?.status !== "connected")
-    props.mcp.dispatch({ type: "detail.opened", name, loaded: true, status, focus: true })
+    if (status?.status !== "failed") toggle(name, status?.status !== "connected" && status?.status !== "idle")
+    else props.mcp.dispatch({ type: "detail.opened", name, loaded: true, status, focus: true })
   }
 
   const back = () => {
