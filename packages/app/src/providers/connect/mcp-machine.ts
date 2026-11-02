@@ -3,7 +3,7 @@ export const MCP_TOGGLE_TIMEOUT_MS = 60_000
 
 /** An MCP server's status, as the server lists it. */
 export type McpServerStatus =
-  | { readonly status: "connected" | "pending" | "disabled" }
+  | { readonly status: "connected" | "idle" | "pending" | "disabled" }
   | { readonly status: "failed" | "needs_auth"; readonly error: string }
 
 /** A sign-in that also accepts the redirect URL pasted from the browser. */

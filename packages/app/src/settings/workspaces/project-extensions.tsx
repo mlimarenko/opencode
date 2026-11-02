@@ -303,7 +303,7 @@ export const ProjectSettingsExtensions: Component<{
       {(name) => (
         <ExtensionRow icon="mcp" name={name}>
           <Switch
-            checked={mcpStatus(name) === "connected"}
+            checked={mcpStatus(name) === "connected" || mcpStatus(name) === "idle"}
             disabled={mcpRowView(mcp.state(), name, undefined).busy}
             hideLabel
             onChange={(enabled) =>

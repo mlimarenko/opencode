@@ -75,15 +75,30 @@ test("opens an investigation draft for a failed MCP server at its originating lo
   }
 })
 
+test("shows idle as enabled and disconnects instead of connecting", async () => {
+  const fixture = await renderMcp({ idle: true })
+  try {
+    await fixture.app.waitForFrame((frame) => frame.includes("Idle ✓") && frame.includes("disconnect"))
+    fixture.app.mockInput.pressKey(" ")
+    await fixture.app.waitForFrame(() => fixture.disconnect === 1)
+    expect(fixture.connect).toBe(0)
+    expect(fixture.oauth).toBe(0)
+  } finally {
+    fixture.app.renderer.destroy()
+  }
+})
+
 async function renderMcp(options?: {
   failed?: boolean
   complete?: boolean
+  idle?: boolean
   location?: { directory: string; workspaceID?: string }
 }) {
   const events = createEventStream()
   let oauth = 0
   let connect = 0
   let polls = 0
+  let disconnect = 0
   let route!: ReturnType<typeof useRoute>
   const calls = createFetch((url, request) => {
     const location = {
@@ -97,9 +112,11 @@ async function renderMcp(options?: {
         data: [
           {
             name: "linear",
-            status: options?.failed
-              ? { status: "failed", error: "MCP error -32000: Connection closed" }
-              : { status: "needs_auth", error: "Authentication required" },
+            status: options?.idle
+              ? { status: "idle" }
+              : options?.failed
+                ? { status: "failed", error: "MCP error -32000: Connection closed" }
+                : { status: "needs_auth", error: "Authentication required" },
             integrationID: "mcp_linear",
           },
         ],
@@ -135,6 +152,10 @@ async function renderMcp(options?: {
     }
     if (url.pathname === "/api/experimental/mcp/linear/connect" && request.method === "POST") {
       connect++
+      return new Response(null, { status: 204 })
+    }
+    if (url.pathname === "/api/experimental/mcp/linear/disconnect" && request.method === "POST") {
+      disconnect++
       return new Response(null, { status: 204 })
     }
     return undefined
@@ -192,6 +213,9 @@ async function renderMcp(options?: {
     },
     get connect() {
       return connect
+    },
+    get disconnect() {
+      return disconnect
     },
   }
 }
