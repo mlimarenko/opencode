@@ -65,6 +65,24 @@ export function projectForSession<T extends { id?: string; worktree: string; san
     .sort((a, b) => b.worktree.length - a.worktree.length)[0]
 }
 
+export function resolveSessionProjectColor(
+  session: SessionInfo,
+  opened: { worktree: string; sandboxes?: string[]; color?: string }[],
+  stored: { id?: string; worktree: string; sandboxes?: string[] }[],
+) {
+  // An external worktree can belong to a repository beneath an opened workspace root.
+  const canonical = projectForSession(session, stored)?.worktree
+
+  for (const directory of [session.location.directory, canonical]) {
+    if (!directory) continue
+    const project = opened
+      .filter((item) => item.color !== undefined && isProjectDirectory(item, directory))
+      .sort((a, b) => b.worktree.length - a.worktree.length)[0]
+
+    if (project) return project.color
+  }
+}
+
 export const errorMessage = (err: unknown, fallback: string) => {
   if (err && typeof err === "object" && "data" in err) {
     const data = (err as { data?: { message?: string } }).data
