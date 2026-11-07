@@ -619,6 +619,8 @@ function useMcp(props: ServiceProps, controllers: McpControllers, close: () => v
 
               if (status === "failed") return ctx.t("failed")
 
+              if (status === "idle") return ctx.t("idle")
+
               return ctx.t(status === "connected" ? "mcp.connected" : "mcp.disabled")
             }
 

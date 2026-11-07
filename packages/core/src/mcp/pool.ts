@@ -184,6 +184,7 @@ export const layer = Layer.effect(
                 yield* Deferred.succeed(slot.outcome, "private")
               }),
             settled: Effect.void,
+            released: Effect.void,
             closed: (reason) =>
               Effect.gen(function* () {
                 detach(key, slot)
@@ -260,6 +261,14 @@ export const layer = Layer.effect(
         own?: McpConnection.Connection
         // This start's credential selection, which a private connection opens with as well.
         selected?: Selection
+        // Metadata kept after an idle release, when the shared connection left with this Location's claim.
+        snapshot?: {
+          tools: McpConnection.Connection["tools"]
+          prompts: McpConnection.Connection["prompts"]
+          instructions: string | undefined
+          title: string | undefined
+          catalog: McpConnection.Catalog | undefined
+        }
       } = {}
       // A private connection, used when the key can't be shared, with the configured protocol or plain legacy.
       const privately = (config: Mcp.ServerConfig) =>
@@ -334,10 +343,19 @@ export const layer = Layer.effect(
           return live().client
         },
         get tools() {
-          return live().tools
+          return live().tools ?? state.snapshot?.tools
         },
         get prompts() {
-          return live().prompts
+          return live().prompts ?? state.snapshot?.prompts
+        },
+        get instructions() {
+          return live().instructions ?? state.snapshot?.instructions
+        },
+        get title() {
+          return live().title ?? state.snapshot?.title
+        },
+        get catalog() {
+          return live().catalog ?? state.snapshot?.catalog
         },
         start: Effect.gen(function* () {
           if (input.config.type === "local" && input.config.cwd === undefined && !unfixed.has(input.name)) {
@@ -351,22 +369,41 @@ export const layer = Layer.effect(
           }
           const selected = yield* input.select
           state.selected = selected
-          if (!unpoolable.has(selected.key) && (yield* join(selected))) return
+          if (!unpoolable.has(selected.key) && (yield* join(selected))) {
+            state.snapshot = undefined
+            return
+          }
           state.own = legacy.has(selected.key) ? older : configured
           yield* state.own.start
+          state.snapshot = undefined
         }),
         stop: Effect.gen(function* () {
+          state.snapshot = undefined
           if (!state.claim) return yield* (state.own ?? configured).stop
           yield* clear
           yield* input.events.changed("tools")
           yield* input.events.changed("resources")
           yield* input.events.changed("prompts")
         }),
+        // Only a pooled location holds a shareable connection; a private one releases its own transport.
+        release: Effect.gen(function* () {
+          if (!state.claim) return yield* (state.own ?? configured).release
+          const connection = live()
+          state.snapshot = {
+            tools: connection.tools,
+            prompts: connection.prompts,
+            instructions: connection.instructions,
+            title: connection.title,
+            catalog: connection.catalog,
+          }
+          yield* clear
+          yield* input.events.released
+        }),
         recovering: (client, request) =>
           state.shared
             ? state.shared.recovering(client, (client) => request(bind(client)))
             : (state.own ?? configured).recovering(client, request),
-        catalog: (client) => live().catalog(client),
+        loadCatalog: (client) => live().loadCatalog(client),
       }
     }
 
