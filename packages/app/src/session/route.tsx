@@ -202,12 +202,7 @@ function SessionRouteErrorBoundary(props: ParentProps<{ sessionID?: string; serv
 
         return (
           <SessionStatePanel>
-            <SessionErrorFallback
-              error={error}
-              sessionID={props.sessionID}
-              serverKey={props.serverKey}
-              onRetry={reset}
-            />
+            <SessionErrorFallback error={error} sessionID={props.sessionID} serverKey={props.serverKey} />
           </SessionStatePanel>
         )
       }}
