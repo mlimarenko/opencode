@@ -378,9 +378,12 @@ export const layer = Layer.effect(
           state.snapshot = undefined
         }),
         stop: Effect.gen(function* () {
+          const snapshot = state.snapshot
           state.snapshot = undefined
-          if (!state.claim) return yield* (state.own ?? configured).stop
-          yield* clear
+          if (!state.claim) {
+            yield* (state.own ?? configured).stop
+            if (!snapshot) return
+          } else yield* clear
           yield* input.events.changed("tools")
           yield* input.events.changed("resources")
           yield* input.events.changed("prompts")

@@ -3986,6 +3986,7 @@ describe("MCP pool", () => {
           const scope = yield* Effect.scope
           const run = yield* FiberSet.makeRuntime<never, void, never>()
           const released: string[] = []
+          const changed: string[] = []
           const connection = pool.connection({
             name,
             config,
@@ -4008,12 +4009,12 @@ describe("MCP pool", () => {
               settled: Effect.void,
               released: Effect.sync(() => released.push(name)),
               closed: () => Effect.void,
-              changed: () => Effect.void,
+              changed: (kind) => Effect.sync(() => changed.push(kind)),
             },
             select: Effect.succeed({ key: McpPool.key({ config }), authProvider: Effect.undefined }),
           })
           yield* connection.start
-          return { connection, released }
+          return { connection, released, changed }
         })
       const a = yield* holder(directories[0], "first")
       const b = yield* holder(directories[1], "second")
@@ -4052,6 +4053,16 @@ describe("MCP pool", () => {
       expect(b.connection.client).toBe(client)
       yield* client.callTool({ name: "echo" })
       expect(server.state.toolLists).toBe(1)
+
+      a.changed.length = 0
+      yield* a.connection.stop
+      expect(a.connection.tools).toBeUndefined()
+      expect(a.connection.prompts).toBeUndefined()
+      expect(a.connection.instructions).toBeUndefined()
+      expect(a.connection.title).toBeUndefined()
+      expect(a.connection.catalog).toBeUndefined()
+      expect(a.changed).toEqual(["tools", "resources", "prompts"])
+      expect(b.connection.client).toBe(client)
 
       // The released Location rejoins the live shared connection instead of opening a second one.
       yield* a.connection.start
@@ -4092,6 +4103,7 @@ testEffect(Layer.empty).effect("defers configured MCP startup until location use
 testEffect(Layer.empty).effect("releases discovery-only transports while retaining MCP catalogs", () =>
   Effect.gen(function* () {
     const server = yield* resourceServer({ modern: true })
+    const published: string[] = []
     server.state.resources = [{ name: "Readme", uri: "docs://readme" }]
     yield* Effect.gen(function* () {
       const service = yield* Mcp.Service
@@ -4120,6 +4132,19 @@ testEffect(Layer.empty).effect("releases discovery-only transports while retaini
       expect((yield* service.resourceCatalog()).resources.map((resource) => resource.uri)).toContain("docs://readme")
       expect(server.state.toolLists).toBe(1)
 
+      published.length = 0
+      yield* service.disconnect("resources")
+      expect((yield* service.servers())[0]?.status).toEqual({ status: "disabled" })
+      expect(yield* service.tools()).toEqual([])
+      expect(yield* service.prompts()).toEqual([])
+      expect(yield* service.instructions()).toEqual([])
+      expect((yield* service.resourceCatalog()).resources).toEqual([])
+      expect(published).toContain(McpEvent.ToolsChanged.type)
+      expect(published).toContain(McpEvent.ResourcesChanged.type)
+      expect(published).toContain(Mcp.PromptsChanged.type)
+
+      yield* service.connect("resources")
+      expect(server.state.toolLists).toBe(2)
       yield* service.callTool({ server: "resources", name: "echo" })
       expect(server.state.toolLists).toBe(2)
       expect((yield* service.servers())[0]?.status).toEqual({ status: "connected" })
@@ -4128,6 +4153,9 @@ testEffect(Layer.empty).effect("releases discovery-only transports while retaini
       Effect.provide(
         resourceMcpLayer(
           new ConfigMCP.Remote({ type: "remote", url: server.url, oauth: false, protocol: "2026-07-28" }),
+          undefined,
+          undefined,
+          { published },
         ),
       ),
     )

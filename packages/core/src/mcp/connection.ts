@@ -252,7 +252,7 @@ export function make(input: Input): Connection {
 
   const stop = Effect.gen(function* () {
     const scope = state.scope
-    if (!scope) return
+    if (!scope && !state.tools && !state.prompts && !state.instructions && !state.title && !state.catalog) return
     state.scope = undefined
     state.client = undefined
     state.tools = undefined
@@ -260,7 +260,7 @@ export function make(input: Input): Connection {
     state.instructions = undefined
     state.title = undefined
     state.catalog = undefined
-    yield* Scope.close(scope, Exit.void)
+    if (scope) yield* Scope.close(scope, Exit.void)
     yield* input.events.changed("tools")
     yield* input.events.changed("resources")
     yield* input.events.changed("prompts")
