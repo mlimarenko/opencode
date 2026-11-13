@@ -473,7 +473,10 @@ export const layer = (options?: Options) =>
         yield* activate
         const entry = yield* requireServer(name)
         yield* Effect.gen(function* () {
-          if (entry.connection.client) return
+          if (entry.connection.client) {
+            entry.retained = true
+            return
+          }
           if (entry.status.status !== "idle" && entry.status.status !== "pending") return
           yield* startServer(entry)
           // Watching events is real work, so the discovery idle window must not release the transport.

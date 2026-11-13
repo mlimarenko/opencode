@@ -75,7 +75,7 @@ const eventServer = Effect.fnUntraced(function* () {
   }
 })
 
-const setup = Effect.fnUntraced(function* (input: { flag?: string } = {}) {
+const setup = Effect.fnUntraced(function* (input: { flag?: string; status?: "connected" | "idle" } = {}) {
   const server = yield* eventServer()
   const wakes: Array<{
     sessionID: string
@@ -94,7 +94,7 @@ const setup = Effect.fnUntraced(function* (input: { flag?: string } = {}) {
     Effect.provide(Flag.testLayer([], { overrides: input.flag ?? "mcp_events" })),
     Effect.provide(
       Layer.mock(Mcp.Service, {
-        servers: () => Effect.succeed([{ name: "jobs", status: { status: "connected" } }] as never),
+        servers: () => Effect.succeed([{ name: "jobs", status: { status: input.status ?? "connected" } }] as never),
         events: () => Effect.succeed(server.connection.events),
       }),
     ),
@@ -141,6 +141,16 @@ describe("watch_mcp_event", () => {
   it.live("lists the event types of connected servers after asking permission", () =>
     Effect.gen(function* () {
       const { watch, asserts } = yield* setup()
+      expect((yield* watch({})).output).toEqual({
+        events: [{ server: "jobs", name: "job.finished", description: "A job ended", inputSchema: {} }],
+      })
+      expect(asserts).toMatchObject([{ action: "opencode_watch_mcp_event", resources: ["jobs"], save: ["jobs"] }])
+    }),
+  )
+
+  it.live("lists the event types of idle servers after asking permission", () =>
+    Effect.gen(function* () {
+      const { watch, asserts } = yield* setup({ status: "idle" })
       expect((yield* watch({})).output).toEqual({
         events: [{ server: "jobs", name: "job.finished", description: "A job ended", inputSchema: {} }],
       })

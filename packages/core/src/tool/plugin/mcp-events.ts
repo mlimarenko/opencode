@@ -74,7 +74,7 @@ export const Plugin = {
               const servers =
                 input.server === undefined
                   ? (yield* mcp.servers()).flatMap((server) =>
-                      server.status.status === "connected" ? [server.name] : [],
+                      server.status.status === "connected" || server.status.status === "idle" ? [server.name] : [],
                     )
                   : [input.server]
               yield* permission.assert({

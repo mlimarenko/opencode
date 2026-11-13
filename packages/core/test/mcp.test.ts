@@ -4310,6 +4310,25 @@ describe("MCP events", () => {
     }),
   )
 
+  testEffect(Layer.empty).effect("retains an event client acquired during discovery past the idle deadline", () =>
+    Effect.gen(function* () {
+      const server = yield* eventServer({ events: true })
+      yield* Effect.gen(function* () {
+        const mcp = yield* Mcp.Service
+        expect(yield* ready(mcp)).toEqual({ status: "connected" })
+        const events = yield* mcp.events("resources")
+        if (!events) throw new Error("expected MCP events")
+        yield* drain
+        yield* TestClock.adjust("61 seconds")
+        yield* drain
+        expect((yield* mcp.servers())[0]?.status).toEqual({ status: "connected" })
+        expect(yield* Stream.runCollect(events.stream({ name: "job.finished" }))).toEqual([
+          { type: "active", cursor: "c1", truncated: false },
+        ])
+      }).pipe(Effect.provide(layer(server.url, "mcp_events")))
+    }),
+  )
+
   // Holds each `events/stream` open so a test can send notifications on it or close it. An event named "missing"
   // is refused with NotFound.
   const streamServer = Effect.fnUntraced(function* (input: { events?: boolean; failedOpens?: number } = {}) {
