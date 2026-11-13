@@ -274,7 +274,6 @@ export function McpDialog(props: {
                       <Button
                         size="small"
                         variant="ghost-muted"
-                        class="mcp-status-action"
                         aria-label={language.t("dialog.mcp.error.viewLabel", { name: item().name })}
                         onClick={() => select(item().name)}
                       >
@@ -298,7 +297,6 @@ export function McpDialog(props: {
                       <Button
                         size="small"
                         variant="ghost-muted"
-                        class="mcp-status-action"
                         disabled={busy()}
                         aria-busy={busy()}
                         aria-label={language.t("dialog.mcp.signIn.open", { name: item().name })}

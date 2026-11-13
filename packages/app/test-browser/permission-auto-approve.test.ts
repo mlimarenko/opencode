@@ -1,8 +1,26 @@
-import { expect, test } from "bun:test"
+import { beforeAll, expect, mock, test } from "bun:test"
 import type { PermissionRequest } from "@opencode/client/promise"
 import { createRoot } from "solid-js"
 import { createStore } from "solid-js/store"
-import { createPermissionAutoApprover } from "@/session/requests/auto-approve"
+
+// The approver reads the client-local settings, so the fake answers only the switches it consults.
+const [preferences, setPreferences] = createStore({ enabled: true })
+
+let createPermissionAutoApprover: typeof import("@/session/requests/auto-approve").createPermissionAutoApprover
+
+beforeAll(async () => {
+  const real = { settings: await import("@/settings/model") }
+  mock.module("@/settings/model", () => ({
+    ...real.settings,
+    useSettings: () => ({
+      permissions: {
+        autoApprovesOnServer: () => preferences.enabled,
+        autoApproves: () => preferences.enabled,
+      },
+    }),
+  }))
+  createPermissionAutoApprover = (await import("@/session/requests/auto-approve")).createPermissionAutoApprover
+})
 
 test("auto-approval reconnect sweeps session-owned requests without booting historical locations", async () => {
   const sessions = [
@@ -46,10 +64,6 @@ test("auto-approval reconnect sweeps session-owned requests without booting hist
           observed.resolve()
           return input.sessionID === pending.sessionID ? [pending] : []
         },
-        reply: async (input: { requestID: string }) => {
-          replies.push(input.requestID)
-          answered.resolve()
-        },
       },
     },
   }
@@ -59,14 +73,17 @@ test("auto-approval reconnect sweeps session-owned requests without booting hist
       get: (id: string) => sessions.find((session) => session.id === id),
       invalidate() {},
       sync: async () => {},
-      permission: { list: () => [] },
+      permission: {
+        list: () => [],
+        reply: async (input: { requestID: string }) => {
+          replies.push(input.requestID)
+          answered.resolve()
+        },
+      },
     },
   }
-  const [preferences, setPreferences] = createStore({ enabled: true })
   const dispose = createRoot((dispose) => {
-    createPermissionAutoApprover({ sdk, data, enabled: () => preferences.enabled } as unknown as Parameters<
-      typeof createPermissionAutoApprover
-    >[0])
+    createPermissionAutoApprover({ sdk, data } as unknown as Parameters<typeof createPermissionAutoApprover>[0])
     return dispose
   })
   try {

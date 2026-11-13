@@ -149,7 +149,9 @@ export const layer = Layer.effect(
     )
     return Service.of({
       flush: Effect.gen(function* () {
-        yield* Effect.flatMap(initial, Fiber.join)
+        // Session preparation waits for discovery but does not fail with it: a server that cannot list
+        // its tools reports that on its status, and the registry keeps what it had.
+        yield* Effect.flatMap(initial, Fiber.await)
         yield* mcp.awaitStartup()
         // Each catalog refresh creates new tool objects, so identity shows whether the registry is behind.
         const current = yield* mcp.tools()
