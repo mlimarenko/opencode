@@ -30,14 +30,30 @@ export function shouldRetryEnsure(version: string | undefined, message: string) 
   )
 }
 
-export function stageName(version: string, arch = process.arch) {
-  return `${version}-${arch}`.replace(/[^a-zA-Z0-9._-]/g, "-")
+export function stageName(version: string, arch: string = process.arch, identity?: string) {
+  const base = `${version}-${arch}`.replace(/[^a-zA-Z0-9._-]/g, "-")
+  return identity ? `${base}-${identity}` : base
 }
 
-export function keptStages(bundledVersion: string, runningVersion?: string, arch = process.arch) {
-  const stages = [stageName(bundledVersion, arch)]
+export function stagePrefix(version: string, arch: string = process.arch) {
+  return `${stageName(version, arch)}-`
+}
 
-  if (runningVersion && runningVersion !== bundledVersion) stages.push(stageName(runningVersion, arch))
+/**
+ * Stages to keep while cleaning: the running server's version can share the bundled
+ * semver with a different payload identity, so keep every stage of that version by
+ * prefix. The current stage is kept explicitly by its exact directory name.
+ */
+export function keptStagePrefixes(runningVersion?: string, arch: string = process.arch) {
+  if (!runningVersion) return []
+  return [stagePrefix(runningVersion, arch)]
+}
 
-  return stages
+/**
+ * The legacy `<version>-<arch>` stage of the running server, kept by exact name during the
+ * transition to content-addressed stages so cleanup cannot delete a still-running payload.
+ */
+export function keptStageNames(runningVersion?: string, arch: string = process.arch) {
+  if (!runningVersion) return []
+  return [stageName(runningVersion, arch)]
 }
