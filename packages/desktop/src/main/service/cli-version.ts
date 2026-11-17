@@ -30,14 +30,25 @@ export function shouldRetryEnsure(version: string | undefined, message: string) 
   )
 }
 
-export function stageName(version: string, arch = process.arch) {
-  return `${version}-${arch}`.replace(/[^a-zA-Z0-9._-]/g, "-")
+export function stageName(version: string, arch: string, identity: string) {
+  const base = `${version}-${arch}`.replace(/[^a-zA-Z0-9._-]/g, "-")
+  return `${base}-${identity}`
 }
 
-export function keptStages(bundledVersion: string, runningVersion?: string, arch = process.arch) {
-  const stages = [stageName(bundledVersion, arch)]
+/**
+ * Grouping prefix for stages of one version; not a stage name and never used to
+ * create or execute a stage. The identity is mandatory in `stageName`.
+ */
+export function stagePrefix(version: string, arch: string = process.arch) {
+  return `${`${version}-${arch}`.replace(/[^a-zA-Z0-9._-]/g, "-")}-`
+}
 
-  if (runningVersion && runningVersion !== bundledVersion) stages.push(stageName(runningVersion, arch))
-
-  return stages
+/**
+ * Stages to keep while cleaning: the running server's version can share the bundled
+ * semver with a different payload identity, so keep every managed stage of that
+ * version by prefix. The current stage is kept explicitly by its exact directory name.
+ */
+export function keptStagePrefixes(runningVersion?: string, arch: string = process.arch) {
+  if (!runningVersion) return []
+  return [stagePrefix(runningVersion, arch)]
 }

@@ -7,7 +7,7 @@ import { emitIpcEvent } from "../ipc-events"
 import { getMainWindows } from "../windows"
 import { BackgroundServiceMachine } from "./background-service-machine"
 import { cleanStages } from "./cli-stages"
-import { keptStages, serviceVersion, shouldRetryEnsure } from "./cli-version"
+import { keptStagePrefixes, serviceVersion, shouldRetryEnsure } from "./cli-version"
 import { DesktopCli } from "./desktop-cli"
 import { SidecarCredentials } from "./sidecar-credentials"
 import { takeSidecarProbe } from "./sidecar-probe"
@@ -89,7 +89,7 @@ const ensure = Effect.fn("BackgroundService.ensure")(function* (mode: Background
   // once `Service.ensure` settled which server runs, never for a probed one it may still replace.
   if (mode === "initial" && (app.isPackaged || setup.isolated) && setup.cli.binary && ready.runningVersion)
     runFork(
-      cleanStages(setup.cli.binary, { keep: keptStages(setup.cli.version, ready.runningVersion) }).pipe(
+      cleanStages(setup.cli.binary, { keepPrefixes: keptStagePrefixes(ready.runningVersion) }).pipe(
         Effect.catch((error) => Effect.logError("failed to clean staged v2 CLIs", { error })),
       ),
     )

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { keptStages, serviceVersion, shouldRetryEnsure } from "./cli-version"
+import { keptStagePrefixes, serviceVersion, shouldRetryEnsure, stageName, stagePrefix } from "./cli-version"
 
 describe("cli-version", () => {
   test.each([
@@ -11,11 +11,22 @@ describe("cli-version", () => {
   })
 
   test.each([
-    { bundled: "0.0.0-beta-2", running: "0.0.0-beta-1", expected: ["0.0.0-beta-2-arm64", "0.0.0-beta-1-arm64"] },
-    { bundled: "0.0.0-beta-2", running: "0.0.0-beta-2", expected: ["0.0.0-beta-2-arm64"] },
-    { bundled: "2.0.32", running: undefined, expected: ["2.0.32-arm64"] },
-  ])("keptStages($bundled, $running)", (input) => {
-    expect(keptStages(input.bundled, input.running, "arm64")).toEqual(input.expected)
+    { version: "2.3.0", arch: "x64", identity: "abc123", expected: "2.3.0-x64-abc123" },
+    { version: "2.3.0+build/1", arch: "arm64", identity: "def456", expected: "2.3.0-build-1-arm64-def456" },
+  ])("stageName($version, $arch, $identity) -> $expected", (input) => {
+    expect(stageName(input.version, input.arch, input.identity)).toBe(input.expected)
+  })
+
+  test("stagePrefix groups a version without forming a stage name", () => {
+    expect(stagePrefix("2.3.0", "arm64")).toBe("2.3.0-arm64-")
+  })
+
+  test.each([
+    { running: "0.0.0-beta-1", expected: ["0.0.0-beta-1-arm64-"] },
+    { running: "0.0.0-beta-2", expected: ["0.0.0-beta-2-arm64-"] },
+    { running: undefined, expected: [] },
+  ])("keptStagePrefixes($running)", (input) => {
+    expect(keptStagePrefixes(input.running, "arm64")).toEqual(input.expected)
   })
 
   test.each([
