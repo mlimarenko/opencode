@@ -8,58 +8,54 @@ import { Effect, Layer } from "effect"
 import { cleanStages } from "./cli-stages"
 
 const layers = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)
+const arch = process.arch
+const a = "a".repeat(64)
+const b = "b".repeat(64)
+const c = "c".repeat(64)
 
 describe("cleanStages", () => {
   test.each([
     {
-      name: "upgrade",
-      staged: ["2.0.18-x64-aaa", "2.0.19-x64-bbb", "2.0.20-x64-ccc"],
-      current: "2.0.20-x64-ccc",
-      keep: undefined,
+      name: "upgrade removes other managed stages",
+      staged: [`2.0.18-${arch}-${a}`, `2.0.19-${arch}-${b}`, `2.0.20-${arch}-${c}`],
+      current: `2.0.20-${arch}-${c}`,
       keepPrefixes: undefined,
-      expected: ["2.0.20-x64-ccc"],
+      expected: [`2.0.20-${arch}-${c}`],
     },
     {
-      name: "downgrade",
-      staged: ["2.0.18-x64-aaa", "2.0.19-x64-bbb", "2.0.20-x64-ccc"],
-      current: "2.0.18-x64-aaa",
-      keep: undefined,
+      name: "downgrade removes other managed stages",
+      staged: [`2.0.18-${arch}-${a}`, `2.0.19-${arch}-${b}`, `2.0.20-${arch}-${c}`],
+      current: `2.0.18-${arch}-${a}`,
       keepPrefixes: undefined,
-      expected: ["2.0.18-x64-aaa"],
+      expected: [`2.0.18-${arch}-${a}`],
     },
     {
-      name: "prerelease",
-      staged: ["2.0.20-x64-aaa", "2.1.0-beta.1-x64-bbb", "local-x64-ccc"],
-      current: "2.1.0-beta.1-x64-bbb",
-      keep: undefined,
-      keepPrefixes: undefined,
-      expected: ["2.1.0-beta.1-x64-bbb"],
-    },
-    {
-      name: "legacy stage transition",
-      staged: ["2.3.0-x64", "2.3.0-x64-new"],
-      current: "2.3.0-x64-new",
-      keep: ["2.3.0-x64"],
-      keepPrefixes: ["2.3.0-x64-"],
-      expected: ["2.3.0-x64", "2.3.0-x64-new"],
-    },
-    {
-      name: "same version, adopted older payload",
-      staged: ["2.3.0-x64-old", "2.3.0-x64-new"],
-      current: "2.3.0-x64-new",
-      keep: undefined,
-      keepPrefixes: ["2.3.0-x64-"],
-      expected: ["2.3.0-x64-old", "2.3.0-x64-new"],
+      name: "same version keeps the adopted older payload",
+      staged: [`2.3.0-${arch}-${a}`, `2.3.0-${arch}-${b}`],
+      current: `2.3.0-${arch}-${b}`,
+      keepPrefixes: [`2.3.0-${arch}-`],
+      expected: [`2.3.0-${arch}-${a}`, `2.3.0-${arch}-${b}`],
     },
     {
       name: "different adopted server version",
-      staged: ["2.0.18-x64-aaa", "2.0.19-x64-bbb", "2.0.20-x64-ccc"],
-      current: "2.0.20-x64-ccc",
-      keep: undefined,
-      keepPrefixes: ["2.0.19-x64-"],
-      expected: ["2.0.19-x64-bbb", "2.0.20-x64-ccc"],
+      staged: [`2.0.18-${arch}-${a}`, `2.0.19-${arch}-${b}`, `2.0.20-${arch}-${c}`],
+      current: `2.0.20-${arch}-${c}`,
+      keepPrefixes: [`2.0.19-${arch}-`],
+      expected: [`2.0.19-${arch}-${b}`, `2.0.20-${arch}-${c}`],
     },
-  ])("keeps only the current, legacy and running-version stages after $name", async (input) => {
+    {
+      name: "unmanaged directories and legacy stages stay untouched",
+      staged: [
+        "2.3.0-x64",
+        "custom-stage",
+        `2.0.18-${arch}-${a}`,
+        `2.3.0-${arch}-${b}`,
+      ],
+      current: `2.3.0-${arch}-${b}`,
+      keepPrefixes: [`2.3.0-${arch}-`],
+      expected: ["2.3.0-x64", "custom-stage", `2.3.0-${arch}-${b}`],
+    },
+  ])("$name", async (input) => {
     const root = mkdtempSync(path.join(tmpdir(), "opencode-cli-stages-"))
 
     try {
@@ -71,7 +67,6 @@ describe("cleanStages", () => {
 
       await Effect.runPromise(
         cleanStages(path.join(root, input.current, "opencode-cli"), {
-          keep: input.keep,
           keepPrefixes: input.keepPrefixes,
         }).pipe(Effect.provide(layers)),
       )

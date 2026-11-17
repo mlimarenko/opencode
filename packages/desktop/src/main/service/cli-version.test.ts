@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { stageName, keptStageNames, keptStagePrefixes, serviceVersion, shouldRetryEnsure } from "./cli-version"
+import { keptStagePrefixes, serviceVersion, shouldRetryEnsure, stageName, stagePrefix } from "./cli-version"
 
 describe("cli-version", () => {
   test.each([
@@ -13,9 +13,12 @@ describe("cli-version", () => {
   test.each([
     { version: "2.3.0", arch: "x64", identity: "abc123", expected: "2.3.0-x64-abc123" },
     { version: "2.3.0+build/1", arch: "arm64", identity: "def456", expected: "2.3.0-build-1-arm64-def456" },
-    { version: "2.3.0", arch: "x64", identity: undefined, expected: "2.3.0-x64" },
   ])("stageName($version, $arch, $identity) -> $expected", (input) => {
     expect(stageName(input.version, input.arch, input.identity)).toBe(input.expected)
+  })
+
+  test("stagePrefix groups a version without forming a stage name", () => {
+    expect(stagePrefix("2.3.0", "arm64")).toBe("2.3.0-arm64-")
   })
 
   test.each([
@@ -24,13 +27,6 @@ describe("cli-version", () => {
     { running: undefined, expected: [] },
   ])("keptStagePrefixes($running)", (input) => {
     expect(keptStagePrefixes(input.running, "arm64")).toEqual(input.expected)
-  })
-
-  test.each([
-    { running: "2.3.0", expected: ["2.3.0-arm64"] },
-    { running: undefined, expected: [] },
-  ])("keptStageNames($running)", (input) => {
-    expect(keptStageNames(input.running, "arm64")).toEqual(input.expected)
   })
 
   test.each([
