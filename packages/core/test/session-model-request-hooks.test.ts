@@ -275,13 +275,15 @@ describe("SessionModelRequest HTTP hooks", () => {
     }),
   )
 
-  it.effect("stops before dispatch and keeps a refused hook's reason", () =>
+  it.effect("stops before dispatch and normalizes a refused hook's reason", () =>
     Effect.gen(function* () {
       const hooks = yield* PluginHooks.Service
-      const reason = "[OpenAI API Guard] paid API is off"
+      const reason = "a\n\u0000" + "x".repeat(900)
+      const normalized = "a " + "x".repeat(498)
       yield* hooks.register("session", "http.request", () => Effect.fail(new Hook.Denied({ message: reason })))
       yield* hooks.register("session", "experimental.ws.handshake", () =>
         Effect.fail(new Hook.Denied({ message: reason })),
+
       )
       const bound: string[] = []
       const websocketTransport = SessionModelTransport.Service.of({
@@ -320,11 +322,11 @@ describe("SessionModelRequest HTTP hooks", () => {
         )
         .pipe(Effect.flip)
       expect(http).toBeInstanceOf(Hook.Denied)
-      expect(http.message).toBe(reason)
+      expect(http.message).toBe(normalized)
 
       const ws = yield* prepared.options.webSocket!.execute({} as never).pipe(Effect.flip)
       expect(ws).toBeInstanceOf(AIError)
-      expect(ws.reason).toMatchObject({ _tag: "InvalidRequest", message: reason })
+      expect(ws.reason).toMatchObject({ _tag: "InvalidRequest", message: normalized })
       expect(bound).toEqual([])
     }),
   )

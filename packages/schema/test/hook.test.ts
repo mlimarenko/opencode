@@ -23,4 +23,12 @@ describe("Hook denial boundary", () => {
     expect(Hook.denialMessage("   ")).toBe("Plugin stopped the request.")
     expect(Hook.denialMessage("x".repeat(900)).length).toBe(500)
   })
+
+  test("normalizes every construction of an explicit denial", () => {
+    const denied = new Hook.Denied({ message: "a\n\u0000" + "x".repeat(900) })
+    expect(denied.message).toBe("a " + "x".repeat(498))
+    expect(denied.message).not.toContain("\n")
+    expect(denied.message).not.toContain("\u0000")
+    expect(Hook.denial(denied)).toBe(denied)
+  })
 })

@@ -2,24 +2,13 @@ export * as Hook from "./hook.js"
 
 import { Schema } from "effect"
 
-/**
- * A plugin hook refused the work before it ran. The message is the plugin's own
- * explanation and reaches the user unchanged, so it must stay a short reason:
- * no request headers, authorization material, argv or provider response bodies.
- * Constructing this error is the plugin's explicit statement that the text is
- * safe to display; anything else is replaced by a generic refusal at the boundary.
- */
-export class Denied extends Schema.TaggedError<Denied>()("Hook.Denied", {
-  message: Schema.String,
-}) {}
-
 const MAX_DENIAL_MESSAGE = 500
 const GENERIC_DENIAL = "Plugin stopped the request."
 
 /**
- * The safe part of a message passed to the explicit denial factory: one printable
- * line, bounded in length. An empty or malformed message still says that the plugin
- * stopped the request, so the reason never degrades into a transport or output error.
+ * The safe form of a denial message: one printable line, bounded in length. An
+ * empty or malformed message still says that the plugin stopped the request, so
+ * the reason never degrades into a transport or output error.
  */
 export const denialMessage = (text: unknown) => {
   if (typeof text !== "string") return GENERIC_DENIAL
@@ -28,6 +17,21 @@ export const denialMessage = (text: unknown) => {
     .replace(/\s+/g, " ")
     .trim()
   return line === "" ? GENERIC_DENIAL : line.slice(0, MAX_DENIAL_MESSAGE)
+}
+
+/**
+ * A plugin hook refused the work before it ran. The message reaches the user, so
+ * it must stay a short reason: no request headers, authorization material, argv
+ * or provider response bodies. Normalization lives in this class, so every way of
+ * constructing a denial — the Promise `ctx.deny` factory or a direct Effect
+ * `new Hook.Denied(...)` — produces the same bounded single-line text.
+ */
+export class Denied extends Schema.TaggedError<Denied>()("Hook.Denied", {
+  message: Schema.String,
+}) {
+  constructor(props: { readonly message: string }) {
+    super({ message: denialMessage(props.message) })
+  }
 }
 
 /**
