@@ -184,6 +184,32 @@ describe("cli-stage", () => {
     }
   })
 
+  test("restores a partially lost execute bit on an identical reused payload", async () => {
+    if (process.platform === "win32") return
+    const root = mkdtempSync(path.join(tmpdir(), "opencode-cli-stage-"))
+    try {
+      const source = path.join(root, "payload")
+      writeFileSync(source, "payload")
+      const identity = identityOf("payload")
+      const input = { source, version: "2.3.0", arch: "x64", identity, root, executable }
+
+      const staged = await run(stageCli(input))
+      chmodSync(staged, 0o655)
+      const before = statSync(staged)
+      expect(before.mode & 0o777).toBe(0o655)
+      const again = await run(stageCli(input))
+      const after = statSync(again)
+
+      expect(again).toBe(staged)
+      expect(after.mode & 0o777).toBe(0o755)
+      expect(after.ino).toBe(before.ino)
+      expect(after.mtimeMs).toBe(before.mtimeMs)
+      expect(readFileSync(again, "utf8")).toBe("payload")
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test("fails closed when the execute bit cannot be restored", async () => {
     if (process.platform === "win32") return
     const root = mkdtempSync(path.join(tmpdir(), "opencode-cli-stage-"))

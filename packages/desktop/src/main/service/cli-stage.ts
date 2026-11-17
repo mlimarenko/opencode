@@ -38,9 +38,10 @@ export interface StageInput {
 /**
  * Publish the bundled CLI under a content-addressed stage and return its executable.
  *
- * - An existing stage whose bytes match `identity` is reused only when POSIX execute bits
- *   are present. A missing execute bit is restored with chmod 0755; if that fails the
- *   operation fails instead of returning an unexecutable path.
+ * - An existing stage whose bytes match `identity` is reused only when its POSIX mode is
+ *   the canonical 0755. Any other mode, including a partial loss of execute bits, is
+ *   restored with chmod 0755; if that fails the operation fails instead of returning an
+ *   unexecutable path.
  * - A missing or corrupt stage is published from `source` through a same-directory
  *   temporary file, chmod + rename. On any copy/chmod/rename failure the temporary file is
  *   removed (a cleanup error is logged and the original failure still propagates) and no
@@ -60,7 +61,7 @@ export const stageCli = Effect.fn("DesktopCli.stageCli")(function* (input: Stage
     if (current === input.identity) {
       if (process.platform !== "win32") {
         const stat = yield* fs.stat(destination)
-        if ((stat.mode & 0o111) === 0) {
+        if ((stat.mode & 0o777) !== 0o755) {
           yield* fs.chmod(destination, 0o755).pipe(
             Effect.catch((error) =>
               Effect.fail(new Error(`Cannot restore executable mode on ${destination}`, { cause: error })),
