@@ -1,6 +1,7 @@
 import type { OpenCodeClient } from "@opencode/client"
 import type { CredentialApi, ExperimentalGenerateApi, PluginApi } from "@opencode/client/promise/api"
 import type { Location } from "@opencode/schema/location"
+import type { Hook } from "@opencode/schema/hook"
 import type { PluginOptions } from "../options.js"
 import type { App } from "../app.js"
 import type { AgentDomain } from "./agent.js"
@@ -26,6 +27,13 @@ import type { WorktreeDomain } from "./worktree.js"
 
 export interface Context {
   readonly app: App
+  /**
+   * Build the explicit safe denial a pre-dispatch hook may throw. `message` is
+   * normalized and shown to the user, so it must stay a short reason without
+   * credentials, headers, request bodies or provider response text. Any other
+   * thrown value is replaced by a generic refusal.
+   */
+  readonly deny: (message: string) => Hook.Denied
   readonly location: Location.Info
   readonly options: PluginOptions
   readonly agent: AgentDomain
