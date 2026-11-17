@@ -2,10 +2,12 @@ export * as SessionModelRequest from "./model-request.js"
 
 import {
   ai,
+  AIError,
   AssistantMessage,
   type ContentPart,
   GENERATION_KEYS,
   type GenerationOptionsFields,
+  InvalidRequestError,
   LanguageModel,
   type LLM,
   type LLMRequest,
@@ -418,7 +420,14 @@ export const layer = Layer.effect(
                       url: connect.url,
                       headers: connect.headers,
                     })
-                    .pipe(Effect.map((event) => ({ url: event.url, headers: event.headers }))),
+                    .pipe(
+                      Effect.map((event) => ({ url: event.url, headers: event.headers })),
+                      // A plugin refusal must stop the socket before it opens and keep its
+                      // reason; a defect here would surface as an unreadable stream later.
+                      Effect.mapError(
+                        (denied) => new AIError({ reason: new InvalidRequestError({ message: denied.message }) }),
+                      ),
+                    ),
                 send: (frame) =>
                   hooks
                     .trigger("session", "experimental.ws.send", { ...scope, frame })

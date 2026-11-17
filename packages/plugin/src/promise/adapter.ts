@@ -1,4 +1,5 @@
 import { Tool } from "@opencode/schema/tool"
+import { Hook } from "@opencode/schema/hook"
 import type { Rpc } from "@opencode/schema/rpc"
 import type { OpenCodeEvent } from "@opencode/client"
 import type { RpcCallOptions, RpcEventPayload, SelectedEvent, SubscribeOptions } from "@opencode/client/promise/api"
@@ -296,6 +297,11 @@ export function fromPromise(plugin: Plugin) {
           app: host.app,
           location: host.location,
           options: host.options,
+          // The only way a Promise plugin may put its own text in front of the user:
+          // the message is normalized here and the resulting Hook.Denied is the
+          // boundary's explicit safe-denial type. Throwing an ordinary Error stays
+          // a generic refusal (see `Hook.denial`), so accidental error text is not shown.
+          deny: (message) => new Hook.Denied({ message: Hook.denialMessage(message) }),
           agent: {
             get: adaptApiMethod(AgentEndpoints["agent.get"], host.agent.get),
             list: adaptApiMethod(AgentEndpoints["agent.list"], host.agent.list),
@@ -629,7 +635,22 @@ export function fromPromise(plugin: Plugin) {
           session: {
             hook: (name, callback, options) =>
               register(
-                host.session.hook(name, (event) => Effect.promise(() => Promise.resolve(callback(event))), options),
+                host.session.hook(
+                  name,
+                  // A rejected Promise hook that runs before dispatch is the plugin
+                  // refusing the work, not a runtime defect. Only a Hook.Denied the
+                  // plugin built explicitly keeps its text; any other rejection is a
+                  // generic refusal so accidental error text never reaches the user.
+                  // Hooks inside an exchange keep the old contract.
+                  ((event: Parameters<typeof callback>[0]) =>
+                    name === "http.request" || name === "experimental.ws.handshake"
+                      ? Effect.tryPromise({
+                          try: () => Promise.resolve(callback(event)),
+                          catch: Hook.denial,
+                        })
+                      : Effect.promise(() => Promise.resolve(callback(event)))) as never,
+                  options,
+                ),
               ),
             list: adaptApiMethod(SessionEndpoints["session.list"], host.session.list),
             create: adaptApiMethod(SessionEndpoints["session.create"], host.session.create),

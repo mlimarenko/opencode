@@ -1,7 +1,7 @@
 export * as PluginHooks from "./hooks.js"
 
 import type { AISDKHooks } from "@opencode/plugin/effect/aisdk"
-import type { SessionHooks } from "@opencode/plugin/effect/session"
+import type { SessionHookFailures, SessionHooks } from "@opencode/plugin/effect/session"
 import type { ShellHooks } from "@opencode/plugin/effect/shell"
 import type { ToolFailures, ToolHooks } from "@opencode/plugin/effect/tool"
 import type { ModelHookOptions } from "@opencode/plugin/effect/registration"
@@ -20,10 +20,12 @@ export interface Domains {
 
 type NoFailures<Spec> = { readonly [Name in keyof Spec]: never }
 
-// Failure channel for each hook event. Only tool execute.before may fail: a Tool.Error rejects the call before it runs.
+// Failure channel for each hook event. A plugin may refuse work with a typed
+// Hook.Denied (reported as the request's reason); only tool execute.before may
+// also fail with a Tool.Error, which rejects the call before it runs.
 interface Failures extends Record<keyof Domains, unknown> {
   readonly aisdk: NoFailures<AISDKHooks>
-  readonly session: NoFailures<SessionHooks>
+  readonly session: SessionHookFailures
   readonly permission: NoFailures<PermissionHooks>
   readonly shell: NoFailures<ShellHooks>
   readonly tool: ToolFailures

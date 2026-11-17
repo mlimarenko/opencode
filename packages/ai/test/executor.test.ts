@@ -3,6 +3,7 @@ import { Deferred, Effect, Fiber, Layer, Ref, Stream } from "effect"
 import { Headers, HttpClientError, HttpClientRequest, HttpClientResponse } from "effect/http"
 import { Socket } from "effect/socket"
 import { ai, AIError, HttpContext, InvalidProviderOutputError, isRetryable, TransportError } from "../src/effect.js"
+import { Hook } from "@opencode/schema/hook"
 import {
   LLMClient,
   RequestExecutor,
@@ -232,6 +233,19 @@ describe("RequestExecutor", () => {
       expect(error.reason).toMatchObject({ _tag: "Transport", operation: "read", code: undefined })
       expect(isRetryable(error)).toBeTrue()
     }).pipe(Effect.provide(truncatedStream(['data: {"type":"ping"}\n\n'], new DOMException("aborted", "AbortError")))),
+  )
+
+  it.effect("keeps a plugin hook denial as a non-retryable typed refusal", () =>
+    Effect.gen(function* () {
+      const executor = yield* RequestExecutor.Service
+      const error = yield* executor
+        .execute(request, () => Effect.fail(new Hook.Denied({ message: "[OpenAI API Guard] paid API is off" })))
+        .pipe(Effect.flip)
+
+      expectAIError(error)
+      expect(error.reason).toMatchObject({ _tag: "InvalidRequest", message: "[OpenAI API Guard] paid API is off" })
+      expect(isRetryable(error)).toBeFalse()
+    }).pipe(Effect.provide(dynamicResponse(() => Effect.die(new Error("unexpected HTTP request"))))),
   )
 
   it.effect("preserves middleware error messages", () =>
