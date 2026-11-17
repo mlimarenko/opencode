@@ -1,16 +1,13 @@
 import { Effect, FileSystem, Path } from "effect"
 
-// Only content-addressed stages created by this owner are candidates for cleanup: their last
-// segment is the 64-hex payload identity and the segment before it is the architecture. Any
-// other directory (including legacy `<version>-<arch>` stages or unrelated files) is left
-// untouched as an unmanaged retained artifact; it is never generated, read or executed.
-const IDENTITY = /^[0-9a-f]{64}$/
-
+// Only content-addressed stages created by this owner are candidates for cleanup: the full
+// name must be `<sanitized version>-<arch>-<64-hex payload identity>`, with a non-empty
+// version. Any other directory (including legacy `<version>-<arch>` stages, a bare
+// `<arch>-<identity>` name, or unrelated files) is left untouched as an unmanaged retained
+// artifact; it is never generated, read or executed.
 function managedStage(entry: string, arch: string) {
-  const identity = entry.slice(entry.lastIndexOf("-") + 1)
-  const rest = entry.slice(0, entry.lastIndexOf("-"))
-  const stageArch = rest.slice(rest.lastIndexOf("-") + 1)
-  return IDENTITY.test(identity) && stageArch === arch
+  const escaped = arch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  return new RegExp(`^[a-zA-Z0-9._-]+-${escaped}-[0-9a-f]{64}$`).test(entry)
 }
 
 export const cleanStages = Effect.fn("DesktopCli.cleanStages")(function* (

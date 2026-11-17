@@ -48,12 +48,13 @@ describe("cleanStages", () => {
       staged: [
         "2.3.0-x64",
         "custom-stage",
+        `${arch}-${a}`,
         `2.0.18-${arch}-${a}`,
         `2.3.0-${arch}-${b}`,
       ],
       current: `2.3.0-${arch}-${b}`,
       keepPrefixes: [`2.3.0-${arch}-`],
-      expected: ["2.3.0-x64", "custom-stage", `2.3.0-${arch}-${b}`],
+      expected: ["2.3.0-x64", "custom-stage", `${arch}-${a}`, `2.3.0-${arch}-${b}`],
     },
   ])("$name", async (input) => {
     const root = mkdtempSync(path.join(tmpdir(), "opencode-cli-stages-"))
