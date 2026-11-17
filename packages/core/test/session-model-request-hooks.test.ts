@@ -1,9 +1,10 @@
 import { describe, expect } from "bun:test"
-import { ToolDefinition } from "@opencode/ai/effect"
+import { ToolDefinition, AIError } from "@opencode/ai/effect"
 import { OpenAIChat } from "@opencode/ai/protocols"
 import { Agent } from "@opencode/schema/agent"
 import { Money } from "@opencode/schema/money"
 import { Session } from "@opencode/schema/session"
+import { Hook } from "@opencode/schema/hook"
 import type { SessionRequestKind } from "@opencode/plugin/effect/session"
 import { Location } from "@opencode/core/location"
 import { PluginHooks } from "@opencode/core/plugin/hooks"
@@ -271,6 +272,60 @@ describe("SessionModelRequest HTTP hooks", () => {
         "send:primary:create",
         "receive:primary:created",
       ])
+    }),
+  )
+
+  it.effect("stops before dispatch and keeps a refused hook's reason", () =>
+    Effect.gen(function* () {
+      const hooks = yield* PluginHooks.Service
+      const reason = "[OpenAI API Guard] paid API is off"
+      yield* hooks.register("session", "http.request", () => Effect.fail(new Hook.Denied({ message: reason })))
+      yield* hooks.register("session", "experimental.ws.handshake", () =>
+        Effect.fail(new Hook.Denied({ message: reason })),
+      )
+      const bound: string[] = []
+      const websocketTransport = SessionModelTransport.Service.of({
+        bind: (_sessionID, interceptor) => ({
+          execute: () =>
+            Effect.gen(function* () {
+              if (!interceptor?.handshake) throw new Error("Expected a WebSocket handshake interceptor")
+              bound.push((yield* interceptor.handshake({ url: "wss://example.test/v1/responses", headers: {} })).url)
+              return { frames: Stream.empty, complete: Effect.void }
+            }),
+        }),
+        close: () => Effect.void,
+        closeAll: Effect.void,
+      })
+      const requests = yield* SessionModelRequest.Service.pipe(
+        Effect.provide(SessionModelRequest.layer),
+        Effect.provideService(SessionModelTransport.Service, websocketTransport),
+      )
+      const prepared = yield* requests.primary({
+        session,
+        agent: Agent.ID.make("build"),
+        model: SessionRunnerModel.resolved(OpenAIChat.route.model({ id: "gpt-5.5", provider: "test" }), {
+          capabilities: { tools: true, input: ["text"], output: ["text"] },
+          cost: [],
+          limit: { context: 200_000, output: 32_000 },
+          transport: "websocket",
+        }),
+        system: [],
+        messages: [],
+        webSocket: "session",
+      })
+
+      const http = yield* prepared.options
+        .http!(HttpClientRequest.post("https://example.test/v1/chat/completions"), () =>
+          Effect.die("the denied request must not be sent"),
+        )
+        .pipe(Effect.flip)
+      expect(http).toBeInstanceOf(Hook.Denied)
+      expect(http.message).toBe(reason)
+
+      const ws = yield* prepared.options.webSocket!.execute({} as never).pipe(Effect.flip)
+      expect(ws).toBeInstanceOf(AIError)
+      expect(ws.reason).toMatchObject({ _tag: "InvalidRequest", message: reason })
+      expect(bound).toEqual([])
     }),
   )
 })

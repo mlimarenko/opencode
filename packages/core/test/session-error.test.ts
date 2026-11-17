@@ -21,6 +21,7 @@ import { ID } from "@opencode/core/model"
 import { ModelResolver } from "@opencode/core/model-resolver"
 import { Provider } from "@opencode/core/provider"
 import { Tool } from "@opencode/schema/tool"
+import { Hook } from "@opencode/schema/hook"
 import { toSessionError } from "@opencode/core/session/to-session-error"
 import { SessionRunnerRetry } from "@opencode/core/session/runner/retry"
 
@@ -65,6 +66,13 @@ describe("toSessionError", () => {
       ),
     ).toEqual({ type: "provider.unsupported-operation", message: "no compact endpoint" })
     expect(toSessionError(llm(new UnknownProviderError({ message: "unknown" }))).type).toBe("provider.unknown")
+  })
+
+  test("keeps a plugin hook refusal as the user-visible reason", () => {
+    expect(toSessionError(new Hook.Denied({ message: "[OpenAI API Guard] paid API is off" }))).toEqual({
+      type: "provider.invalid-request",
+      message: "[OpenAI API Guard] paid API is off",
+    })
   })
 
   test("separates the free and Go usage limits from paid rate limits, credit limits, and other providers' 429s", () => {

@@ -1,4 +1,5 @@
 import { Cause, Context, Effect, Layer, Option, Schema, Stream } from "effect"
+import { Hook } from "@opencode/schema/hook"
 import { Auth } from "./auth.js"
 import { Endpoint, type EndpointPatch } from "./endpoint.js"
 import { RequestExecutor } from "./executor.js"
@@ -25,6 +26,7 @@ import {
   Message,
   LLMEvent,
   InvalidProviderOutputError,
+  InvalidRequestError,
   ProviderConfigurationError,
   ProviderID,
   ToolChoice,
@@ -301,6 +303,9 @@ export interface MakeTransportInput<Body, Prepared, Frame, Event, State> {
 const streamError = (route: string, message: string, cause: Cause.Cause<unknown>) => {
   const failed = cause.reasons.find(Cause.isFailReason)?.error
   if (failed instanceof AIError) return failed
+  // A plugin refusal inside the socket taps keeps its reason; it is not unreadable output.
+  if (failed instanceof Hook.Denied)
+    return new AIError({ reason: new InvalidRequestError({ message: failed.message }) })
   return ProviderShared.eventError(route, message, undefined, cause)
 }
 

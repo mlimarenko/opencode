@@ -7,6 +7,7 @@ import type { Session } from "@opencode/schema/session"
 import type { SessionInbox } from "@opencode/schema/session-inbox"
 import type { SessionError } from "@opencode/schema/session-error"
 import type { SessionMessage } from "@opencode/schema/session-message"
+import type { Hook } from "@opencode/schema/hook"
 import type { TokenUsage } from "@opencode/schema/token-usage"
 import type { JsonSchema, Types } from "effect"
 import type { ModelHooks } from "./registration.js"
@@ -216,6 +217,18 @@ export interface SessionHooks {
   readonly "experimental.idle": SessionIdle
 }
 
+/**
+ * Only the hooks that run before a request leaves the process may refuse it: the HTTP
+ * request hook and the WebSocket handshake hook. Their refusal is a typed `Hook.Denied`
+ * the transport reports instead of an unreadable stream. Hooks that run inside an
+ * exchange keep the infallible contract.
+ */
+export type SessionHookFailures = {
+  readonly [Name in keyof SessionHooks]: Name extends "http.request" | "experimental.ws.handshake"
+    ? Hook.Denied
+    : never
+}
+
 export type SessionDomain = Pick<
   SessionApi<unknown>,
   | "list"
@@ -235,5 +248,5 @@ export type SessionDomain = Pick<
   | "context"
 > &
   Pick<ExperimentalSessionApi<unknown>, "wait" | "instructions"> & {
-    readonly hook: ModelHooks<SessionHooks>
+    readonly hook: ModelHooks<SessionHooks, SessionHookFailures>
   }

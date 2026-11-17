@@ -1,4 +1,5 @@
 import { AIError, ToolFailure, type FinishReasonDetails } from "@opencode/ai/effect"
+import { Hook } from "@opencode/schema/hook"
 import { Tool } from "@opencode/schema/tool"
 import { SessionError } from "@opencode/schema/session-error"
 import { Permission } from "../permission.js"
@@ -71,6 +72,11 @@ export function toSessionError(cause: unknown): SessionError.Error {
         return exhaustive
       }
     }
+  }
+  if (cause instanceof Hook.Denied) {
+    // A plugin refused the request before dispatch. Its reason is the safe, plugin-authored
+    // line the user needs; the generic provider classes would hide it.
+    return { type: "provider.invalid-request", message: cause.message }
   }
   if (cause instanceof Permission.BlockedError) return { type: "permission.rejected", message: cause.message }
   if (cause instanceof Permission.CorrectedError) return { type: "permission.rejected", message: cause.feedback }

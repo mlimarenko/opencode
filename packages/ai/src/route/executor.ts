@@ -7,7 +7,8 @@ import {
   HttpClientRequest,
   HttpClientResponse,
 } from "effect/http"
-import { HttpContext, HttpRateLimitDetails, AIError, TransportError } from "../schema/index.js"
+import { HttpContext, HttpRateLimitDetails, AIError, InvalidRequestError, TransportError } from "../schema/index.js"
+import { Hook } from "@opencode/schema/hook"
 import { classifyProviderFailure, providerErrorMessage } from "../provider-error.js"
 import {
   CurrentTls,
@@ -174,6 +175,10 @@ const httpError = (input: {
   readonly operation: HttpOperation
   readonly http?: HttpContext
 }) => {
+  // A plugin hook refusal is a decision, not a transport failure: wrapping it as a
+  // TransportError would lose its reason and retry a request the plugin already stopped.
+  if (input.error instanceof Hook.Denied)
+    return new AIError({ reason: new InvalidRequestError({ message: input.error.message }) })
   const request = HttpClientError.isHttpClientError(input.error) ? input.error.request : input.request
   const transportError = (failure: { readonly message: string; readonly code?: string | undefined }) =>
     new AIError({

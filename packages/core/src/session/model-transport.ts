@@ -65,11 +65,13 @@ export interface Handshake {
 /**
  * Per-exchange taps. `handshake` runs before the connection is selected; `send` sees each outbound
  * frame after the driver builds it; `receive` sees each inbound frame before the driver observes it.
+ * A tap may stop the exchange with a typed `AIError`, which keeps the plugin's reason instead of
+ * degrading into an unreadable stream.
  */
 export interface Interceptor {
-  readonly handshake?: (connect: Handshake) => Effect.Effect<Handshake>
-  readonly send?: (frame: string) => Effect.Effect<string>
-  readonly receive?: (frame: string) => Effect.Effect<string>
+  readonly handshake?: (connect: Handshake) => Effect.Effect<Handshake, AIError>
+  readonly send?: (frame: string) => Effect.Effect<string, AIError>
+  readonly receive?: (frame: string) => Effect.Effect<string, AIError>
 }
 
 export interface Interface {

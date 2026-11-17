@@ -1,4 +1,5 @@
 import { Tool } from "@opencode/schema/tool"
+import { Hook } from "@opencode/schema/hook"
 import type { Rpc } from "@opencode/schema/rpc"
 import type { OpenCodeEvent } from "@opencode/client"
 import type { RpcCallOptions, RpcEventPayload, SelectedEvent, SubscribeOptions } from "@opencode/client/promise/api"
@@ -629,7 +630,21 @@ export function fromPromise(plugin: Plugin) {
           session: {
             hook: (name, callback, options) =>
               register(
-                host.session.hook(name, (event) => Effect.promise(() => Promise.resolve(callback(event))), options),
+                host.session.hook(
+                  name,
+                  // A rejected Promise hook that runs before dispatch is the plugin
+                  // refusing the work, not a runtime defect: keep its reason in the
+                  // typed failure channel so the transport reports it instead of an
+                  // unreadable stream. Hooks inside an exchange keep the old contract.
+                  ((event: Parameters<typeof callback>[0]) =>
+                    name === "http.request" || name === "experimental.ws.handshake"
+                      ? Effect.tryPromise({
+                          try: () => Promise.resolve(callback(event)),
+                          catch: (cause) => new Hook.Denied({ message: Hook.denialMessage(cause) }),
+                        })
+                      : Effect.promise(() => Promise.resolve(callback(event)))) as never,
+                  options,
+                ),
               ),
             list: adaptApiMethod(SessionEndpoints["session.list"], host.session.list),
             create: adaptApiMethod(SessionEndpoints["session.create"], host.session.create),
