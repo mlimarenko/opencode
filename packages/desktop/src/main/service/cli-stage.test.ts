@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test"
 import { createHash } from "node:crypto"
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { NodeFileSystem, NodePath } from "@effect/platform-node"
-import { Effect, Layer } from "effect"
+import { Effect, FileSystem, Layer } from "effect"
 
 import { payloadIdentity, stageCli } from "./cli-stage"
 import { stageName } from "./cli-version"
@@ -14,6 +14,21 @@ const executable = "opencode-cli"
 
 function run<A, E>(effect: Effect.Effect<A, E>) {
   return Effect.runPromise(effect.pipe(Effect.provide(layers)))
+}
+
+function failingChmod(predicate: (target: string) => boolean) {
+  const fs = Layer.effect(
+    FileSystem.FileSystem,
+    Effect.gen(function* () {
+      const base = yield* FileSystem.FileSystem
+      return {
+        ...base,
+        chmod: (target: string, mode: number) =>
+          predicate(target) ? Effect.fail(new Error("EACCES: chmod")) : base.chmod(target, mode),
+      } as FileSystem.FileSystem
+    }),
+  ).pipe(Layer.provide(NodeFileSystem.layer))
+  return Layer.mergeAll(fs, NodePath.layer)
 }
 
 function identityOf(content: string) {
@@ -138,6 +153,76 @@ describe("cli-stage", () => {
         run(stageCli({ source: path.join(root, "missing"), version: "2.3.0", arch: "x64", identity, root, executable })),
       ).rejects.toThrow()
       expect(existsSync(destination)).toBe(false)
+      expect(readdirSync(path.dirname(destination))).toEqual([])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("restores execute bits on an identical reused payload without changing its identity", async () => {
+    if (process.platform === "win32") return
+    const root = mkdtempSync(path.join(tmpdir(), "opencode-cli-stage-"))
+    try {
+      const source = path.join(root, "payload")
+      writeFileSync(source, "payload")
+      const identity = identityOf("payload")
+      const input = { source, version: "2.3.0", arch: "x64", identity, root, executable }
+
+      const staged = await run(stageCli(input))
+      chmodSync(staged, 0o644)
+      const before = statSync(staged)
+      const again = await run(stageCli(input))
+      const after = statSync(again)
+
+      expect(again).toBe(staged)
+      expect(after.mode & 0o777).toBe(0o755)
+      expect(after.ino).toBe(before.ino)
+      expect(after.mtimeMs).toBe(before.mtimeMs)
+      expect(readFileSync(again, "utf8")).toBe("payload")
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("fails closed when the execute bit cannot be restored", async () => {
+    if (process.platform === "win32") return
+    const root = mkdtempSync(path.join(tmpdir(), "opencode-cli-stage-"))
+    try {
+      const source = path.join(root, "payload")
+      writeFileSync(source, "payload")
+      const identity = identityOf("payload")
+      const input = { source, version: "2.3.0", arch: "x64", identity, root, executable }
+
+      const staged = await run(stageCli(input))
+      chmodSync(staged, 0o644)
+
+      await expect(
+        Effect.runPromise(stageCli(input).pipe(Effect.provide(failingChmod((target) => target === staged)))),
+      ).rejects.toThrow()
+      expect(statSync(staged).mode & 0o777).toBe(0o644)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("removes its temporary file when publication chmod fails", async () => {
+    if (process.platform === "win32") return
+    const root = mkdtempSync(path.join(tmpdir(), "opencode-cli-stage-"))
+    try {
+      const source = path.join(root, "payload")
+      writeFileSync(source, "payload")
+      const identity = identityOf("payload")
+      const destination = path.join(root, "cli", stageName("2.3.0", "x64", identity), executable)
+
+      await expect(
+        Effect.runPromise(
+          stageCli({ source, version: "2.3.0", arch: "x64", identity, root, executable }).pipe(
+            Effect.provide(failingChmod((target) => target.endsWith(".tmp"))),
+          ),
+        ),
+      ).rejects.toThrow()
+      expect(existsSync(destination)).toBe(false)
+      expect(readdirSync(path.dirname(destination)).filter((name) => name.endsWith(".tmp"))).toEqual([])
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
